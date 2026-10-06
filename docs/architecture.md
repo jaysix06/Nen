@@ -2,10 +2,26 @@
 
 Nen is a local Windows notes utility built with Rust, GPUI and SQLite.
 
-Nen reuses an existing Still data directory when present. The notification
+Nen reuses the legacy data directory when present. The notification
 identity, COM activator, database schema and single-instance mutex remain stable
 across the rename so existing reminders and data keep working. New installations
 use the Nen application-data directory.
+
+The updater checks a configured GitHub repository's latest stable release once
+after the main window initializes. HTTP runs on GPUI's background executor with
+timeouts, HTTPS-only redirects and bounded metadata/download sizes. The update
+banner is immediately above the notes sidebar's Settings button. Version
+comparison ignores build metadata and excludes prereleases. Only the repository's
+`Nen.exe` release asset is eligible, with a verified SHA-256 digest and x64 PE header.
+
+Downloads and a copy of the trusted current executable are staged in a unique
+folder beside Nen. The helper verifies its identity and the parent's image path,
+holds the exact parent process handle, signals readiness and waits for process
+exit. Nen saves notes, preferences and its session through the storage worker
+before committing installation and shutting down. The helper verifies the
+download again, keeps the old executable until replacement and relaunch succeed,
+and restores it on failure. The reopened app removes only known helper files
+inside the verified staging directory. Update checks never send note content.
 
 ## Implementation
 

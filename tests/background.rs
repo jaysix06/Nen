@@ -2,7 +2,7 @@ use nen::{background, models::Settings};
 
 #[test]
 fn importing_and_transforming_a_background_never_changes_the_original() -> anyhow::Result<()> {
-    let root = std::env::temp_dir().join(format!("still-image-{}", uuid::Uuid::new_v4()));
+    let root = std::env::temp_dir().join(format!("nen-image-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root)?;
     let original = root.join("original.png");
     image::RgbaImage::from_pixel(64, 32, image::Rgba([180, 70, 30, 255])).save(&original)?;

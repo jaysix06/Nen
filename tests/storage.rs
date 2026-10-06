@@ -136,7 +136,7 @@ fn recurrence_skips_missed_events_without_duplicates() {
 
 #[test]
 fn reopening_applies_migrations_without_data_loss() -> anyhow::Result<()> {
-    let path = std::env::temp_dir().join(format!("still-test-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("nen-test-{}.sqlite", uuid::Uuid::new_v4()));
     let note = Note::new(NoteType::Normal);
     {
         let db = Database::open(&path)?;
@@ -186,7 +186,7 @@ fn reminder_completion_is_atomic_and_idempotent() -> anyhow::Result<()> {
 #[test]
 fn worker_shutdown_barrier_flushes_queued_writes() -> anyhow::Result<()> {
     use nen::storage::{Request, Store};
-    let path = std::env::temp_dir().join(format!("still-worker-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("nen-worker-{}.sqlite", uuid::Uuid::new_v4()));
     let (store, _, _, _) = Store::start(path.clone())?;
     let mut note = Note::new(NoteType::Normal);
     for index in 0..25 {
@@ -283,8 +283,7 @@ fn indexed_search_handles_unicode_edits_and_deletion() -> anyhow::Result<()> {
 
 #[test]
 fn upgrading_a_v1_database_backfills_search_without_changing_notes() -> anyhow::Result<()> {
-    let path =
-        std::env::temp_dir().join(format!("still-migration-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("nen-migration-{}.sqlite", uuid::Uuid::new_v4()));
     {
         let connection = rusqlite::Connection::open(&path)?;
         connection.execute_batch(include_str!("../src/storage/schema.sql"))?;

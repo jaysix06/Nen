@@ -10,12 +10,107 @@ use nen::{
 };
 
 #[gpui_kit::test]
+fn update_banner_sits_above_settings_and_failed_updates_preserve_notes(cx: &mut TestAppContext) {
+    cx.dispatcher.allow_parking();
+    let path = std::env::temp_dir().join(format!("nen-update-ui-{}.sqlite", uuid::Uuid::new_v4()));
+    let (store, _, _, _) = Store::start(path.clone()).expect("worker");
+    cx.update(gpui_kit::init);
+    let state = cx.new(|cx| {
+        AppState::new(
+            store.clone(),
+            Settings {
+                default_wallpaper: false,
+                reduced_motion: true,
+                ..Settings::default()
+            },
+            Session::default(),
+            cx,
+        )
+    });
+    let (handle, _) = cx.update(|cx| {
+        gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+            cx.new(|cx| AppWindow::new(state.clone(), window, cx))
+        })
+        .expect("window")
+    });
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("sidebar-update").is_none());
+    })
+    .expect("render without update");
+    state.update(cx, |state, cx| {
+        state.create_note(false, cx);
+        let id = state.session.active.clone().expect("note");
+        state.edit(
+            &id,
+            "Keep this note".into(),
+            "Unsaved text must survive a failed update".into(),
+            cx,
+        );
+        state.update = Some(nen::update::Update {
+            version: "99.0.0".into(),
+            // Invalid origin fails before any network request, executable write or restart.
+            download_url: "https://invalid.example/Nen.exe".into(),
+            size: 128,
+            sha256: "a".repeat(64),
+        });
+        cx.notify();
+    });
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        let banner = window.find("sidebar-update");
+        let settings = window.find("sidebar-settings").bounds();
+        assert!(banner.bounds().size.height > gpui_kit::px(38.));
+        assert!(banner.bounds().bottom() <= settings.top());
+        assert!((banner.bounds().left() - settings.left()).abs() < gpui_kit::px(1.));
+        assert!((banner.bounds().right() - settings.right()).abs() < gpui_kit::px(1.));
+        window.click("sidebar-update", cx);
+        assert_eq!(state.read(cx).update_status, Some("Downloading update..."));
+        window.render_frame(cx);
+        window.click("sidebar-update", cx);
+        assert_eq!(state.read(cx).update_status, Some("Downloading update..."));
+    })
+    .expect("render and click update banner");
+    cx.run_until_parked();
+    state.read_with(cx, |state, _| {
+        assert!(state.update_status.is_none());
+        assert!(
+            state
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("Couldn't update Nen"))
+        );
+        let note = state.active_note().expect("original note");
+        assert_eq!(note.note.title, "Keep this note");
+        assert_eq!(
+            note.note.content,
+            "Unsaved text must survive a failed update"
+        );
+        assert!(
+            state.update.is_some(),
+            "The update remains available for retry"
+        );
+    });
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("sidebar-update", cx);
+        assert_eq!(state.read(cx).update_status, Some("Downloading update..."));
+    })
+    .expect("failed update can be retried");
+    cx.run_until_parked();
+    store
+        .request(Request::Shutdown)
+        .recv_blocking()
+        .expect("shutdown")
+        .expect("saved");
+    std::fs::remove_file(path).expect("cleanup");
+}
+
+#[gpui_kit::test]
 fn category_shortcuts_follow_the_dropdown_and_can_be_remapped(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
-    let path = std::env::temp_dir().join(format!(
-        "still-category-keys-{}.sqlite",
-        uuid::Uuid::new_v4()
-    ));
+    let path =
+        std::env::temp_dir().join(format!("nen-category-keys-{}.sqlite", uuid::Uuid::new_v4()));
     {
         let db = Database::open(&path).expect("database");
         db.save_category("studio", "Studio")
@@ -141,8 +236,7 @@ fn category_shortcuts_follow_the_dropdown_and_can_be_remapped(cx: &mut TestAppCo
 #[gpui_kit::test]
 fn short_and_long_notes_fill_the_sidebar_and_accept_edge_clicks(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
-    let path =
-        std::env::temp_dir().join(format!("still-row-width-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("nen-row-width-{}.sqlite", uuid::Uuid::new_v4()));
     let ids = {
         let db = Database::open(&path).expect("database");
         [
@@ -275,7 +369,7 @@ fn short_and_long_notes_fill_the_sidebar_and_accept_edge_clicks(cx: &mut TestApp
 #[gpui_kit::test]
 fn closing_empty_drafts_discards_them_without_reopening_or_late_saves(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
-    let path = std::env::temp_dir().join(format!("still-empty-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("nen-empty-{}.sqlite", uuid::Uuid::new_v4()));
     let (store, _, _, _) = Store::start(path.clone()).expect("worker");
     cx.update(gpui_kit::init);
     let state = cx.new(|cx| {
@@ -368,7 +462,7 @@ fn closing_empty_drafts_discards_them_without_reopening_or_late_saves(cx: &mut T
 #[gpui_kit::test]
 fn editor_font_slider_changes_rendered_text_size(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
-    let path = std::env::temp_dir().join(format!("still-font-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("nen-font-{}.sqlite", uuid::Uuid::new_v4()));
     let id = {
         let database = Database::open(&path).expect("database");
         let mut note = nen::models::Note::new(nen::models::NoteType::Normal);
@@ -479,7 +573,7 @@ fn editor_font_slider_changes_rendered_text_size(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn dim_slider_changes_tint_and_overlay_covers_the_image(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
-    let path = std::env::temp_dir().join(format!("still-dim-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("nen-dim-{}.sqlite", uuid::Uuid::new_v4()));
     let (store, _, _, _) = Store::start(path.clone()).expect("database");
     let settings = Settings {
         default_wallpaper: false,
@@ -492,7 +586,7 @@ fn dim_slider_changes_tint_and_overlay_covers_the_image(cx: &mut TestAppContext)
     let state = cx.new(|cx| AppState::new(store.clone(), settings, Session::default(), cx));
     state.update(cx, |state, _| {
         state.background =
-            Some(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/still-lake.png"));
+            Some(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/nen-lake.png"));
         state.settings_page = Some("Background".into());
     });
     let (handle, _) = cx.update(|cx| {
@@ -535,7 +629,7 @@ fn dim_slider_changes_tint_and_overlay_covers_the_image(cx: &mut TestAppContext)
 #[gpui_kit::test]
 fn legacy_appearance_upgrade_preserves_chosen_preferences(cx: &mut TestAppContext) {
     let path =
-        std::env::temp_dir().join(format!("still-preferences-{}.sqlite", uuid::Uuid::new_v4()));
+        std::env::temp_dir().join(format!("nen-preferences-{}.sqlite", uuid::Uuid::new_v4()));
     let (store, _, _, _) = Store::start(path.clone()).expect("database");
     cx.update(gpui_kit::init);
     for (theme, color, expected_theme, wallpaper) in [
@@ -627,7 +721,7 @@ fn custom_wallpapers_keep_editor_text_readable_in_both_themes(cx: &mut TestAppCo
 #[gpui_kit::test]
 fn category_creation_moves_and_sidebar_visibility_survive_restart(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
-    let path = std::env::temp_dir().join(format!("still-category-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("nen-category-{}.sqlite", uuid::Uuid::new_v4()));
     let (store, mut settings, session, _) = Store::start(path.clone()).expect("database");
     // Exercise the complete keyboard/dialog flow with accessibility motion off;
     // normal-motion geometry is inspected in the native GPU captures.
@@ -814,7 +908,7 @@ fn category_creation_moves_and_sidebar_visibility_survive_restart(cx: &mut TestA
 #[gpui_kit::test]
 fn failed_autosave_preserves_the_unsaved_buffer(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
-    let path = std::env::temp_dir().join(format!("still-failure-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("nen-failure-{}.sqlite", uuid::Uuid::new_v4()));
     let (store, _, _, _) = Store::start(path.clone()).expect("database");
     cx.update(gpui_kit::init);
     let state =
@@ -853,7 +947,7 @@ fn an_inflight_note_action_cannot_recreate_a_deleted_note(cx: &mut TestAppContex
         models::{Note, NoteType},
         storage::Response,
     };
-    let path = std::env::temp_dir().join(format!("still-delete-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("nen-delete-{}.sqlite", uuid::Uuid::new_v4()));
     let note = Note::new(NoteType::Normal);
     {
         let db = Database::open(&path).expect("database");
@@ -889,7 +983,7 @@ fn an_inflight_note_action_cannot_recreate_a_deleted_note(cx: &mut TestAppContex
 #[gpui_kit::test]
 fn keyboard_creation_typing_and_reopening_tabs(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
-    let path = std::env::temp_dir().join(format!("still-ui-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("nen-ui-{}.sqlite", uuid::Uuid::new_v4()));
     let (store, _, _, _) = Store::start(path.clone()).expect("test database");
     cx.update(gpui_kit::init);
     cx.update(|cx| {
@@ -969,7 +1063,7 @@ fn floating_note_and_inline_reminder_share_persistent_state(cx: &mut TestAppCont
     cx.dispatcher.allow_parking();
     use nen::storage::Response;
     use nen::ui::floating::FloatingWindow;
-    let path = std::env::temp_dir().join(format!("still-island-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("nen-island-{}.sqlite", uuid::Uuid::new_v4()));
     let (store, _, _, _) = Store::start(path.clone()).expect("database");
     cx.update(gpui_kit::init);
     let state =
@@ -1047,8 +1141,7 @@ fn floating_note_and_inline_reminder_share_persistent_state(cx: &mut TestAppCont
 fn shortcut_capture_detects_conflicts_and_updates_commands(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
     use nen::ui::settings::SettingsView;
-    let path =
-        std::env::temp_dir().join(format!("still-shortcuts-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("nen-shortcuts-{}.sqlite", uuid::Uuid::new_v4()));
     let (store, _, _, _) = Store::start(path.clone()).expect("database");
     cx.update(gpui_kit::init);
     let state =

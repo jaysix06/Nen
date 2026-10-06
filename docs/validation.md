@@ -5,7 +5,7 @@ toolchain. The executable uses native GPUI rendering, not a browser.
 
 ## Checks
 
-- `cargo test --locked --features ui-testing`: 36 passing tests.
+- `cargo test --locked --features ui-testing`: 42 passing tests.
 - `cargo clippy --locked --features ui-testing --all-targets -- -D warnings`: clean.
 - `cargo fmt -- --check`: clean.
 - `cargo build --locked --release`: successful; UI testing features excluded.
@@ -18,7 +18,36 @@ toolchain. The executable uses native GPUI rendering, not a browser.
   [results](screenshots/results.png), [editor](screenshots/note.png),
   [reminder](screenshots/reminder.png) and [appearance](screenshots/settings.png).
 - Normal Windows launches and restored sessions were checked for callback errors.
-- Packaged Nen 0.2.7 starts and flushes a graceful shutdown with a clean release log.
+- Packaged Nen 0.2.8 starts, saves notes and preferences, and shuts down gracefully.
+
+The 0.2.8 updater checks newer stable versions, ignores version build metadata,
+rejects foreign download URLs, missing checksums, oversized downloads, corrupt
+executables and non-x64 binaries, and restores the old executable if relaunch
+fails. A GPUI test places the update banner above Settings, exercises clicking,
+blocks duplicate clicks during download, and verifies failed updates preserve
+note text and allow retry. The editors disable input while shutdown flushes notes.
+
+An isolated native Windows smoke check in a folder containing spaces exercised
+the trusted helper, exact parent-process identity and exit wait, executable
+replacement, app relaunch, preservation of all five seeded notes and staging
+cleanup. The update banner was captured and inspected in
+[the native window](screenshots/updates.png). Installation testing uses an offline
+release fixture. Live checks use `jaysix06/Nen`, configured in the package metadata.
+The same native replacement/relaunch check passed against the production
+`dist/Nen.exe` build, with UI-testing features excluded. Windows notification
+registration was restored to the packaged executable after the isolated checks.
+
+The read-only `check_updates` example reached the configured GitHub API and
+reported no newer compatible stable release on 2026-10-07. The repository had
+no published releases at verification time; HTTP 404 is handled quietly.
+
+`cargo-audit` 0.22.2 reported zero known vulnerabilities in `Cargo.lock` on
+2026-10-07. It reported existing unmaintained transitive dependencies `instant`
+0.1.13, `paste` 1.0.15, `rustls-pemfile` 2.2.0, `rustybuzz` 0.20.1 and `ttf-parser`
+0.25.1. `rustls-pemfile` is outside the Windows dependency graph. These are
+retained because replacements require changes to the compatible upstream GUI
+dependency graph, beyond the updater change. Review their upstream replacements
+and advisories again by 2026-11-07.
 
 The 0.2.7 icon correction crops the outer transparent padding before resizing,
 ignoring near-transparent stray pixels and preserving the tile's aspect ratio
@@ -29,7 +58,7 @@ uses the new cropped artwork. The original supplied PNG remains unchanged.
 
 The 0.2.6 rename retains the notification identity, COM activator and legacy
 single-instance mutex. Data checks verify existing notes and preferences reopen
-from the Still directory and new installations use Nen. Startup checks limit
+from the legacy directory and new installations use Nen. Startup checks limit
 legacy-entry removal to the app's sibling executable. The supplied transparent
 artwork is packaged into seven ICO sizes and matching tray/notification PNGs.
 

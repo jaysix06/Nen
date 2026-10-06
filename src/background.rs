@@ -9,9 +9,9 @@ pub fn prepare(settings: &Settings, directory: &Path) -> Result<Option<PathBuf>>
     let path = if let Some(path) = &settings.background_image {
         PathBuf::from(path)
     } else if settings.default_wallpaper {
-        let path = assets.join("still-lake-v1.png");
+        let path = assets.join("nen-lake-v1.png");
         if !path.exists() {
-            std::fs::write(&path, include_bytes!("../assets/still-lake.png"))?;
+            std::fs::write(&path, include_bytes!("../assets/nen-lake.png"))?;
         }
         path
     } else {

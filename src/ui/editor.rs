@@ -334,6 +334,7 @@ impl Render for NoteEditor {
                     .gap_2()
                     .child(
                         Input::new(&self.title)
+                            .disabled(app.is_quitting())
                             .id("note-title")
                             .appearance(false)
                             .bordered(false)
@@ -348,6 +349,7 @@ impl Render for NoteEditor {
                     .when(!self.reading, |view| {
                         view.child(
                             Textarea::new(&self.body)
+                                .disabled(app.is_quitting())
                                 .appearance(false)
                                 .bordered(false)
                                 .size_full()

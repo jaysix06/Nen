@@ -40,6 +40,11 @@ pub struct AppState {
     pub desktop: Option<crate::platform::Desktop>,
     pub shortcut_capture: Option<String>,
     pub background: Option<std::path::PathBuf>,
+    pub update: Option<crate::update::Update>,
+    pub update_status: Option<&'static str>,
+    update_task: Option<Task<()>>,
+    update_check_started: bool,
+    pending_update: Option<crate::update::Installer>,
     background_task: Option<Task<()>>,
     settings_task: Option<Task<()>>,
     session_task: Option<Task<()>>,
@@ -126,6 +131,11 @@ impl AppState {
             desktop: None,
             shortcut_capture: None,
             background: None,
+            update: None,
+            update_status: None,
+            update_task: None,
+            update_check_started: false,
+            pending_update: None,
             background_task: None,
             settings_task: None,
             session_task: None,
@@ -145,6 +155,66 @@ impl AppState {
         state.refresh_reminders(cx);
         state.prepare_background(cx);
         state
+    }
+
+    pub fn is_quitting(&self) -> bool {
+        self.quitting
+    }
+
+    pub fn check_for_updates(&mut self, cx: &mut Context<Self>) {
+        if self.update_check_started {
+            return;
+        }
+        self.update_check_started = true;
+        self.update_task = Some(cx.spawn(async move |state, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async { crate::update::check() })
+                .await;
+            let _ = state.update(cx, |state, cx| {
+                match result {
+                    Ok(update) => state.update = update,
+                    Err(error) => log::warn!("Update check failed: {error}"),
+                }
+                cx.notify();
+            });
+        }));
+    }
+
+    pub fn install_update(&mut self, cx: &mut Context<Self>) {
+        if self.quitting || self.update_status.is_some() {
+            return;
+        }
+        let Some(update) = self.update.clone() else {
+            return;
+        };
+        self.update_status = Some("Downloading update...");
+        self.update_task = Some(cx.spawn(async move |state, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    crate::update::prepare(&update).and_then(|prepared| prepared.launch())
+                })
+                .await;
+            let _ = state.update(cx, |state, cx| {
+                match result {
+                    Ok(installer) => {
+                        state.pending_update = Some(installer);
+                        state.update_status = Some("Saving and restarting...");
+                        state.quit(cx);
+                    }
+                    Err(error) => {
+                        state.update_status = None;
+                        state.fail(
+                            format!("Couldn't update Nen: {error}. You can try again."),
+                            cx,
+                        );
+                    }
+                }
+                cx.notify();
+            });
+        }));
+        cx.notify();
     }
 
     pub fn active_note(&self) -> Option<&NoteBuffer> {
@@ -582,6 +652,9 @@ impl AppState {
     }
 
     pub fn edit(&mut self, id: &str, title: String, content: String, cx: &mut Context<Self>) {
+        if self.quitting {
+            return;
+        }
         if self.deleting.contains(id) {
             return;
         }
@@ -989,6 +1062,7 @@ impl AppState {
             return;
         }
         self.quitting = true;
+        self.update_task = None;
         self.settings_task = None;
         self.session_task = None;
         self.background_task = None;
@@ -1001,6 +1075,8 @@ impl AppState {
         }
         pending.push(self.store.request(Request::Session(self.session.clone())));
         pending.push(self.store.request(Request::Settings(self.settings.clone())));
+        let mut installer = self.pending_update.take();
+        cx.notify();
         let store = self.store.clone();
         cx.spawn(async move |state, cx| {
             for response in pending {
@@ -1011,20 +1087,35 @@ impl AppState {
                 {
                     let _ = state.update(cx, |state, cx| {
                         state.quitting = false;
+                        state.update_status = None;
                         state.fail(error, cx);
                     });
                     return;
                 }
             }
+            if let Some(installer) = &mut installer
+                && let Err(error) = installer.commit()
+            {
+                let _ = state.update(cx, |state, cx| {
+                    state.quitting = false;
+                    state.update_status = None;
+                    state.fail(format!("Couldn't install the update: {error}"), cx);
+                });
+                return;
+            }
             match store.request(Request::Shutdown).recv().await {
                 Ok(Ok(_)) => cx.update(|cx| cx.quit()),
                 result => {
+                    if let Some(installer) = &mut installer {
+                        installer.cancel();
+                    }
                     let error = match result {
                         Ok(Err(error)) => error,
                         _ => "Storage is unavailable.".into(),
                     };
                     let _ = state.update(cx, |state, cx| {
                         state.quitting = false;
+                        state.update_status = None;
                         state.fail(error, cx);
                     });
                 }

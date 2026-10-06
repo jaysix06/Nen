@@ -471,6 +471,46 @@ impl AppWindow {
                     ),
             )
             .child(list)
+            .when_some(app.update.as_ref(), |view, update| {
+                let status = app.update_status;
+                view.child(
+                    Button::new("sidebar-update")
+                        .ghost()
+                        .w_full()
+                        .h_auto()
+                        .px_4()
+                        .py_3()
+                        .rounded(ButtonRounded::None)
+                        .disabled(status.is_some())
+                        .accessibility_label("Update Nen and restart")
+                        .tooltip("Save your notes, install the latest version, and reopen Nen")
+                        .child(
+                            div()
+                                .id("update-banner")
+                                .test_support()
+                                .w_full()
+                                .v_flex()
+                                .gap_1()
+                                .text_left()
+                                .whitespace_normal()
+                                .child(
+                                    div().text_sm().text_color(p.accent).child(
+                                        status.unwrap_or("A new version of Nen is available"),
+                                    ),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(p.muted)
+                                        .child(format!("Update to {} and restart", update.version)),
+                                ),
+                        )
+                        .on_click({
+                            let state = self.state.clone();
+                            move |_, _, cx| state.update(cx, |state, cx| state.install_update(cx))
+                        }),
+                )
+            })
             .child(
                 div()
                     .id("notes-footer")

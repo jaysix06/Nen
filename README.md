@@ -38,6 +38,9 @@ reminders are handled when Nen opens or Windows resumes.
   dim, saturation and opacity controls, plus Opaque/Frosted/Clear surfaces.
 - Tray access, optional startup registration, floating placement and opacity,
   focus-loss hiding, position memory and reduced-motion support.
+- A background update check on launch, with an update banner above Settings.
+  Clicking it downloads the new version, saves your notes and preferences,
+  installs it and reopens Nen. Failed downloads leave Nen running for retry.
 
 The editor stores Markdown as text. Remote images are not loaded by the reading
 view. Links open in the default application only when clicked. Frosted surfaces
@@ -113,7 +116,7 @@ the same tool on PATH or through the Windows SDK installation.
 
 Application data is stored under `%LOCALAPPDATA%\Nen\Nen\data`:
 `notes.sqlite`, its SQLite journal files, managed backgrounds and bounded logs.
-Existing Still installations continue using `%LOCALAPPDATA%\Still\Still\data`
+Existing installations continue using `%LOCALAPPDATA%\Still\Still\data`
 so notes, settings, reminders and image paths remain intact.
 The app registers its own Windows notification identity and COM activator under
 the current user's registry. Startup registration is optional. It does not
@@ -123,7 +126,32 @@ Windows must allow notifications for reminder banners to appear. If delivery is
 disabled, Nen shows an error and keeps the reminder in the Reminders page.
 Quitting stops scheduling until the app opens again. It cannot wake a powered-off
 computer. Notes and images stay local. Logs do not include note content.
-There are no accounts, telemetry, analytics, advertising or cloud services.
+There are no accounts, telemetry, analytics or advertising. Update checks use
+GitHub's public release API over HTTPS; notes and settings are never uploaded.
+Writing, search and reminders continue to work without an internet connection.
+
+## Release updates
+
+Nen checks [jaysix06/Nen releases](https://github.com/jaysix06/Nen/releases).
+The GitHub repository URL is stored in `Cargo.toml`'s `package.repository`.
+A build-time `NEN_UPDATE_REPOSITORY` URL can override it. Builds with
+neither configured skip update checks. The application checks once per launch,
+including tray launches, and quietly skips offline or failed checks.
+
+Publish stable GitHub releases with semantic-version tags such as `v0.2.8`
+and attach the Windows x64 executable as **Nen.exe**. Drafts, prereleases,
+older versions and releases without that asset do not show a banner.
+The asset must have GitHub's SHA-256 digest. Nen verifies the download's size,
+checksum and executable architecture before installing it.
+
+Maintainers can run `./scripts/cargo.ps1 run --locked --example check_updates`
+to check the configured source without downloading or installing an update.
+
+Nen must be in a writable folder for automatic installation. A copy of the
+current executable runs a hidden update helper, waits for Nen to finish saving
+and exit, replaces the executable, and reopens the app with the same local data.
+If replacement or relaunch fails, it restores the previous executable and
+tries to reopen that version. No administrator prompt is requested.
 
 `NEN_DATA_DIR` can point to a separate directory for development and tests.
 The previous `STILL_DATA_DIR` override is also accepted.

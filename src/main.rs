@@ -10,6 +10,18 @@ use nen::{
 };
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--apply-update") {
+        let result = std::env::args()
+            .nth(2)
+            .ok_or_else(|| anyhow::anyhow!("Missing update parent"))
+            .and_then(|pid| Ok(pid.parse::<u32>()?))
+            .and_then(nen::update::apply_update);
+        if let Err(error) = result {
+            eprintln!("Nen update failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if let Err(error) = run() {
         eprintln!("Could not start Nen: {error}");
         log::error!("Startup failed: {error}");
@@ -20,6 +32,16 @@ fn main() {
 fn run() -> anyhow::Result<()> {
     let directory = diagnostics::data_directory()?;
     diagnostics::init(&directory)?;
+    if let Some(path) = std::env::args_os()
+        .skip_while(|arg| arg != "--cleanup-update")
+        .nth(1)
+    {
+        std::thread::spawn(move || {
+            if let Err(error) = nen::update::cleanup_update(std::path::Path::new(&path)) {
+                log::warn!("Update cleanup failed: {error}");
+            }
+        });
+    }
     use std::hash::{Hash, Hasher};
     let mut hash = std::collections::hash_map::DefaultHasher::new();
     directory.hash(&mut hash);
@@ -119,6 +141,15 @@ fn run() -> anyhow::Result<()> {
                                     settings.editor_font_size = font.clamp(12., 30.);
                                 }
                                 state.update_settings(settings, cx);
+                                if std::env::args().any(|arg| arg == "--capture-update-banner") {
+                                    // Offline preview fixture, available only in UI-testing builds.
+                                    state.update = Some(nen::update::Update {
+                                        version: "0.2.9".into(),
+                                        download_url: "https://invalid.example/Nen.exe".into(),
+                                        size: 128,
+                                        sha256: "a".repeat(64),
+                                    });
+                                }
                                 if std::env::args().any(|arg| arg == "--capture-settings") {
                                     state.settings_page = Some("Appearance".into());
                                 }
@@ -284,6 +315,14 @@ fn run() -> anyhow::Result<()> {
                     return;
                 }
             }
+            state.update(cx, |state, cx| {
+                if std::env::args().any(|arg| arg == "--update-failed") {
+                    state.fail("Nen couldn't install the update. Your previous version has been reopened. Try again from the update banner.".into(), cx);
+                }
+                if !std::env::args().any(|arg| arg == "--demo" || arg == "--capture") {
+                    state.check_for_updates(cx);
+                }
+            });
             let config = state.read(cx).settings.clone();
             match nen::platform::Desktop::new(&config) {
                 Ok((desktop, platform_events, warnings)) => {

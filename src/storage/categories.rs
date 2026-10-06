@@ -24,7 +24,7 @@ impl Database {
             (1..=48).contains(&name.chars().count()),
             "Use a category name of 1–48 characters."
         );
-        let duplicate: bool = self.connection.query_row("SELECT EXISTS(SELECT 1 FROM categories WHERE still_lower(name)=still_lower(?1) AND id!=?2)", params![name,id], |row| row.get(0))?;
+        let duplicate: bool = self.connection.query_row("SELECT EXISTS(SELECT 1 FROM categories WHERE nen_lower(name)=nen_lower(?1) AND id!=?2)", params![name,id], |row| row.get(0))?;
         anyhow::ensure!(!duplicate, "A category with that name already exists.");
         self.connection.execute("INSERT INTO categories(id,name,created_at) VALUES(?1,?2,unixepoch()) ON CONFLICT(id) DO UPDATE SET name=excluded.name", params![id,name])?;
         Ok(())

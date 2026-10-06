@@ -11,7 +11,7 @@ impl Database {
     pub fn open(path: &Path) -> Result<Self> {
         let mut connection = Connection::open(path).context("Could not open notes database")?;
         connection.create_scalar_function(
-            "still_lower",
+            "nen_lower",
             1,
             rusqlite::functions::FunctionFlags::SQLITE_UTF8
                 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC,
@@ -95,15 +95,15 @@ impl Database {
         }
         let mut statement = self.connection.prepare(
             "SELECT n.id,CASE WHEN trim(n.title)='' THEN 'Untitled' ELSE n.title END,
-              CASE WHEN ?3='' OR instr(still_lower(n.content),?3)=0 THEN substr(n.content,1,160)
-                   ELSE substr(n.content,max(1,instr(still_lower(n.content),?3)-35),160) END,
+              CASE WHEN ?3='' OR instr(nen_lower(n.content),?3)=0 THEN substr(n.content,1,160)
+                   ELSE substr(n.content,max(1,instr(nen_lower(n.content),?3)-35),160) END,
               n.updated_at,n.is_pinned,n.is_archived,
               (SELECT min(scheduled_at) FROM reminders WHERE note_id=n.id AND status IN ('pending','notified')),n.category_id
              FROM notes n WHERE is_archived=?1 AND (?2=0 OR is_pinned=1)
              AND (?4 IS NULL OR category_id=?4)
              AND (?5=0 OR EXISTS(SELECT 1 FROM reminders WHERE note_id=n.id))
-             AND (?3='' OR instr(still_lower(n.title),?3)>0 OR instr(still_lower(n.content),?3)>0)
-             ORDER BY CASE WHEN ?3!='' AND instr(still_lower(n.title),?3)>0 THEN 0 ELSE 1 END,is_pinned DESC,updated_at DESC")?;
+             AND (?3='' OR instr(nen_lower(n.title),?3)>0 OR instr(nen_lower(n.content),?3)>0)
+             ORDER BY CASE WHEN ?3!='' AND instr(nen_lower(n.title),?3)>0 THEN 0 ELSE 1 END,is_pinned DESC,updated_at DESC")?;
         let rows = statement.query_map(
             params![
                 archived,

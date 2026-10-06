@@ -7,3 +7,4 @@ pub mod platform;
 pub mod storage;
 pub mod theme;
 pub mod ui;
+pub mod update;

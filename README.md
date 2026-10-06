@@ -8,7 +8,10 @@ Write it. Keep it accessible. Get reminded. Move on.
 
 ## Run
 
-Open `dist/Nen.exe`. No account or internet connection is required.
+Download the Windows x64 portable ZIP from
+[the latest release](https://github.com/jaysix06/Nen/releases/latest), extract it
+and open `Nen.exe`. For a local build, open `dist/Nen.exe`.
+No account or internet connection is required to use your notes.
 Windows needs the Microsoft Visual C++ x64 runtime (`VCRUNTIME140.dll`),
 which is already installed on this development machine.
 Closing the window keeps Nen in the tray by default. Use **Quit** in the

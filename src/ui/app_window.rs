@@ -307,11 +307,12 @@ impl AppWindow {
         let app = self.state.read(cx);
         let mut list = div()
             .id("note-list")
+            .test_support()
             .v_flex()
+            .w_full()
             .flex_1()
             .min_h_0()
             .overflow_hidden()
-            .px_2()
             .py_2();
         if !app.summaries.is_empty() {
             let list_state = self.state.clone();
@@ -362,12 +363,13 @@ impl AppWindow {
                             rows.push(
                                 div()
                                     .id(SharedString::from(format!("note-{}", note.id)))
+                                    .test_support()
                                     .v_flex()
+                                    .w_full()
                                     .h(px(82.))
                                     .gap_1()
-                                    .px_3()
+                                    .px_4()
                                     .py_2()
-                                    .rounded(px(4.))
                                     .cursor_pointer()
                                     .when(selected, |row| row.bg(p.selected))
                                     .hover(|row| row.bg(p.selected))
@@ -401,6 +403,7 @@ impl AppWindow {
                     },
                 )
                 .track_scroll(&self.list_scroll)
+                .w_full()
                 .flex_1()
                 .min_h_0(),
             );
@@ -428,17 +431,24 @@ impl AppWindow {
                     .id("notes-header")
                     .test_support()
                     .h(px(38.))
-                    .px_3()
                     .flex()
                     .items_center()
                     .justify_between()
                     .border_b_1()
                     .border_color(p.line)
-                    .child(super::categories::picker(self.state.clone(), cx))
+                    .child(super::categories::picker(
+                        self.state.clone(),
+                        width - 39.,
+                        cx,
+                    ))
                     .child(
                         Button::new("new-sidebar-note")
                             .ghost()
                             .small()
+                            .h_full()
+                            .w(px(38.))
+                            .flex_shrink_0()
+                            .rounded(ButtonRounded::None)
                             .icon(IconName::Plus)
                             .tooltip("New note")
                             .on_click({
@@ -454,19 +464,32 @@ impl AppWindow {
             .child(list)
             .child(
                 div()
+                    .id("notes-footer")
+                    .test_support()
                     .h(px(38.))
                     .flex_shrink_0()
                     .border_t_1()
                     .border_color(p.line)
                     .flex()
                     .items_center()
-                    .px_3()
                     .child(
                         Button::new("sidebar-settings")
                             .ghost()
                             .small()
-                            .icon(IconName::Settings)
-                            .label("Settings")
+                            .w_full()
+                            .h_full()
+                            .px_4()
+                            .rounded(ButtonRounded::None)
+                            .accessibility_label("Settings")
+                            .child(
+                                div()
+                                    .w_full()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(Icon::new(IconName::Settings).size_3())
+                                    .child("Settings"),
+                            )
                             .on_click({
                                 let state = self.state.clone();
                                 move |_, _, cx| {

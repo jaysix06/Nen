@@ -10,6 +10,140 @@ use still::{
 };
 
 #[gpui_kit::test]
+fn short_and_long_notes_fill_the_sidebar_and_accept_edge_clicks(cx: &mut TestAppContext) {
+    cx.dispatcher.allow_parking();
+    let path =
+        std::env::temp_dir().join(format!("still-row-width-{}.sqlite", uuid::Uuid::new_v4()));
+    let ids = {
+        let db = Database::open(&path).expect("database");
+        [
+            "A",
+            "A much longer note title that must truncate inside the sidebar",
+        ]
+        .map(|title| {
+            let mut note = still::models::Note::new(still::models::NoteType::Normal);
+            note.title = title.into();
+            db.save_note(&note).expect("note");
+            note.id
+        })
+    };
+    let (store, _, _, _) = Store::start(path.clone()).expect("worker");
+    cx.update(gpui_kit::init);
+    let state = cx.new(|cx| {
+        AppState::new(
+            store.clone(),
+            Settings {
+                default_wallpaper: false,
+                reduced_motion: true,
+                ..Settings::default()
+            },
+            Session::default(),
+            cx,
+        )
+    });
+    let (handle, _) = cx.update(|cx| {
+        gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+            cx.new(|cx| AppWindow::new(state.clone(), window, cx))
+        })
+        .expect("window")
+    });
+    store
+        .request(Request::Categories)
+        .recv_blocking()
+        .expect("load barrier")
+        .expect("categories");
+    cx.run_until_parked();
+    for id in ids {
+        cx.update_window(handle, |_, window, cx| {
+            window.render_frame(cx);
+            let list = window.find("note-list").bounds();
+            let row_id = gpui_kit::SharedString::from(format!("note-{id}"));
+            let row = window.find(row_id.clone()).bounds();
+            assert!((row.left() - list.left()).abs() < gpui_kit::px(1.));
+            assert!(
+                (row.right() - list.right()).abs() < gpui_kit::px(1.),
+                "Every row must fill the sidebar, even with a short title: {row:?} / {list:?}"
+            );
+            window.click_at(
+                row_id,
+                gpui_kit::point(row.size.width - gpui_kit::px(3.), gpui_kit::px(20.)),
+                cx,
+            );
+        })
+        .expect("full-width row");
+        cx.run_until_parked();
+        assert_eq!(
+            state.read_with(cx, |state, _| state.session.active.clone()),
+            Some(id)
+        );
+    }
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        let header = window.find("notes-header").bounds();
+        let picker = window.find("category-picker").bounds();
+        let create = window.find("new-sidebar-note").bounds();
+        assert!((picker.left() - header.left()).abs() < gpui_kit::px(1.));
+        assert!((picker.right() - create.left()).abs() < gpui_kit::px(1.));
+        window.click_at(
+            "category-picker",
+            gpui_kit::point(picker.size.width - gpui_kit::px(3.), gpui_kit::px(16.)),
+            cx,
+        );
+        window.render_frame(cx);
+        let menu = window.find("popup-menu").bounds();
+        for index in [0usize, 1, 3, 4, 5, 7, 8, 10] {
+            let row = window.within("popup-menu").find(index).bounds();
+            assert!((menu.right() - row.right()).abs() <= gpui_kit::px(5.));
+            assert!((row.left() - menu.left()).abs() <= gpui_kit::px(5.));
+        }
+        window.press("escape", cx);
+        window.render_frame(cx);
+        let footer = window.find("notes-footer").bounds();
+        let settings = window.find("sidebar-settings").bounds();
+        assert!((settings.left() - footer.left()).abs() < gpui_kit::px(1.));
+        assert!((settings.right() - footer.right()).abs() < gpui_kit::px(1.));
+        window.click_at(
+            "sidebar-settings",
+            gpui_kit::point(settings.size.width - gpui_kit::px(3.), gpui_kit::px(16.)),
+            cx,
+        );
+        window.render_frame(cx);
+        let sidebar = window.find("settings-sidebar").bounds();
+        for name in [
+            "General",
+            "Reminders",
+            "Appearance",
+            "Background",
+            "Floating bar",
+            "Shortcuts",
+            "Advanced",
+            "close-settings",
+        ] {
+            let row = window.find(name).bounds();
+            assert!((row.left() - sidebar.left()).abs() < gpui_kit::px(1.));
+            assert!((row.right() - sidebar.right()).abs() <= gpui_kit::px(1.));
+        }
+        let row = window.find("Appearance").bounds();
+        window.click_at(
+            "Appearance",
+            gpui_kit::point(row.size.width - gpui_kit::px(3.), gpui_kit::px(16.)),
+            cx,
+        );
+    })
+    .expect("full-width navigation controls");
+    assert_eq!(
+        state.read_with(cx, |state, _| state.settings_page.clone()),
+        Some("Appearance".into())
+    );
+    store
+        .request(Request::Shutdown)
+        .recv_blocking()
+        .expect("shutdown")
+        .expect("flush");
+    std::fs::remove_file(path).expect("cleanup");
+}
+
+#[gpui_kit::test]
 fn closing_empty_drafts_discards_them_without_reopening_or_late_saves(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
     let path = std::env::temp_dir().join(format!("still-empty-{}.sqlite", uuid::Uuid::new_v4()));

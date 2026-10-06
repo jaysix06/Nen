@@ -5,7 +5,7 @@ toolchain. The executable uses native GPUI rendering, not a browser.
 
 ## Checks
 
-- `cargo test --locked --features ui-testing`: 30 passing tests.
+- `cargo test --locked --features ui-testing`: 31 passing tests.
 - `cargo clippy --locked --features ui-testing --all-targets -- -D warnings`: clean.
 - `cargo fmt -- --check`: clean.
 - `cargo build --locked --release`: successful; UI testing features excluded.
@@ -18,7 +18,13 @@ toolchain. The executable uses native GPUI rendering, not a browser.
   [results](screenshots/results.png), [editor](screenshots/note.png),
   [reminder](screenshots/reminder.png) and [appearance](screenshots/settings.png).
 - Normal Windows launches and restored sessions were checked for callback errors.
-- Packaged Still 0.2.2 starts and flushes a graceful shutdown with a clean release log.
+- Packaged Still 0.2.3 starts and flushes a graceful shutdown with a clean release log.
+
+The 0.2.3 note rows span the full notes pane. GPUI checks verify identical row
+edges for short and long titles and selection by clicking near the right edge.
+The category trigger, bottom Settings button and preferences navigation also
+fill their available width. Checks cover their bounds, right-edge clicks and
+full-width dropdown items. Hover and selection use the same full-width targets.
 
 The 0.2.2 GPUI checks exercise the relocated category picker, left-aligned
 preferences labels, the actual font slider and rendered line height, repeated
@@ -61,7 +67,7 @@ fail; the original code was restored before the final suite.
 
 ## Measurements
 
-Still 0.2.2 release executable: 31,089,664 bytes (29.65 MiB), including its local wallpaper.
+Still 0.2.3 release executable: 31,092,736 bytes (29.65 MiB), including its local wallpaper.
 The performance samples below were collected with 0.2.0.
 
 | Measurement | Result |

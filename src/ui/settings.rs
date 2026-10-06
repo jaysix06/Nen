@@ -416,18 +416,19 @@ impl Render for SettingsView {
             .clone()
             .unwrap_or("General".into());
         let mut nav = div()
+            .id("settings-sidebar")
+            .test_support()
             .w(px(208.))
             .flex_shrink_0()
             .v_flex()
             .gap_1()
-            .px_3()
             .py_4()
             .border_r_1()
             .border_color(p.line)
             .bg(p.canvas)
             .child(
                 div()
-                    .px_2()
+                    .px_4()
                     .text_size(px(13.))
                     .font_semibold()
                     .child("Settings"),
@@ -435,7 +436,7 @@ impl Render for SettingsView {
         for (group, sections) in NAVIGATION {
             nav = nav.child(
                 div()
-                    .px_2()
+                    .px_4()
                     .mt_4()
                     .mb_1()
                     .text_size(px(10.))
@@ -452,7 +453,8 @@ impl Render for SettingsView {
                         .accessibility_label(name)
                         .w_full()
                         .h(px(32.))
-                        .px_2()
+                        .px_4()
+                        .rounded(ButtonRounded::None)
                         .child(
                             div()
                                 .id(format!("settings-nav-{name}"))
@@ -489,6 +491,8 @@ impl Render for SettingsView {
             Button::new("close-settings")
                 .ghost()
                 .w_full()
+                .px_4()
+                .rounded(ButtonRounded::None)
                 .accessibility_label("Back to notes")
                 .child(
                     div()

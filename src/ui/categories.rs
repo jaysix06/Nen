@@ -14,19 +14,32 @@ use gpui_kit::{
     *,
 };
 
-pub fn picker(state: Entity<AppState>, cx: &App) -> impl IntoElement {
+pub fn picker(state: Entity<AppState>, width: f32, cx: &App) -> impl IntoElement {
     let label = state.read(cx).category_label().to_owned();
     let p = crate::theme::palette(cx);
     Button::new("category-picker")
         .ghost()
         .small()
-        .label(label)
+        .w(px(width.max(0.)))
+        .min_w_0()
+        .h(px(37.))
+        .px_4()
         .child(
-            Icon::new(IconName::ChevronDown)
-                .size_3()
-                .text_color(p.muted),
+            div()
+                .w_full()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_2()
+                .child(div().min_w_0().truncate().child(label.clone()))
+                .child(
+                    Icon::new(IconName::ChevronDown)
+                        .size_3()
+                        .text_color(p.muted),
+                ),
         )
-        .rounded(px(5.))
+        .accessibility_label(label)
+        .rounded(ButtonRounded::None)
         .tooltip("Categories")
         .dropdown_menu(move |menu, _, cx| category_menu(menu, state.clone(), cx))
 }

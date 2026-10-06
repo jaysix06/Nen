@@ -73,8 +73,10 @@ fn run() -> anyhow::Result<()> {
                 }),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Still".into()),
+                    appears_transparent: true,
                     ..Default::default()
                 }),
+                app_owns_titlebar_drag: true,
                 window_min_size: Some(size(px(820.), px(540.))),
                 app_id: Some("dev.still.notes".into()),
                 ..Default::default()

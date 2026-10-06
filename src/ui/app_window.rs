@@ -768,34 +768,38 @@ impl Render for AppWindow {
             .text_size(px(14.))
             .child(background)
             .child(
-                div()
-                    .h(px(58.))
+                TitleBar::new()
+                    .h(px(40.))
                     .bg(p.canvas)
-                    .px_5()
-                    .flex()
-                    .items_center()
-                    .justify_between()
+                    .pl_3()
                     .border_b_1()
                     .border_color(p.line)
                     .child(
                         div()
+                            .h_full()
+                            .flex_1()
                             .flex()
                             .items_center()
-                            .gap_2()
-                            .child(Icon::new(IconName::Notebook).size_5().text_color(p.accent))
+                            .gap_3()
                             .child(
                                 div()
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .text_size(px(19.))
+                                    .text_size(px(13.))
                                     .child("still"),
+                            )
+                            .child(div().flex_1())
+                            .child(
+                                div()
+                                    .occlude()
+                                    .mr_3()
+                                    .child(
+                                        Input::new(&self.search)
+                                            .prefix(Icon::new(IconName::Search).size_3())
+                                            .w(px(228.))
+                                            .small()
+                                            .aria_label("Search notes"),
+                                    ),
                             ),
-                    )
-                    .child(
-                        Input::new(&self.search)
-                            .prefix(Icon::new(IconName::Search).size_4())
-                            .w(px(300.))
-                            .small()
-                            .aria_label("Search all notes"),
                     ),
             )
             .child(body);

@@ -2,7 +2,7 @@
 extern crate gpui_kit as gpui;
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AppContext, TestAppContext, WindowOptions};
-use still::{
+use nen::{
     app::AppState,
     models::{Session, Settings},
     storage::{Database, Request, Store},
@@ -150,7 +150,7 @@ fn short_and_long_notes_fill_the_sidebar_and_accept_edge_clicks(cx: &mut TestApp
             "A much longer note title that must truncate inside the sidebar",
         ]
         .map(|title| {
-            let mut note = still::models::Note::new(still::models::NoteType::Normal);
+            let mut note = nen::models::Note::new(nen::models::NoteType::Normal);
             note.title = title.into();
             db.save_note(&note).expect("note");
             note.id
@@ -308,7 +308,7 @@ fn closing_empty_drafts_discards_them_without_reopening_or_late_saves(cx: &mut T
                 .recv_blocking()
                 .expect("draft barrier")
                 .expect("draft query"),
-            still::storage::Response::Note(None)
+            nen::storage::Response::Note(None)
         ));
         if whitespace {
             state.update(cx, |state, cx| {
@@ -344,7 +344,7 @@ fn closing_empty_drafts_discards_them_without_reopening_or_late_saves(cx: &mut T
                 .recv_blocking()
                 .expect("save barrier")
                 .expect("load"),
-            still::storage::Response::Note(Some(_))
+            nen::storage::Response::Note(Some(_))
         ));
         cx.run_until_parked();
     }
@@ -356,7 +356,7 @@ fn closing_empty_drafts_discards_them_without_reopening_or_late_saves(cx: &mut T
     let database = Database::open(&path).expect("reopen");
     assert_eq!(
         database
-            .list(still::models::Collection::All, "")
+            .list(nen::models::Collection::All, "")
             .expect("list")
             .len(),
         2
@@ -371,7 +371,7 @@ fn editor_font_slider_changes_rendered_text_size(cx: &mut TestAppContext) {
     let path = std::env::temp_dir().join(format!("still-font-{}.sqlite", uuid::Uuid::new_v4()));
     let id = {
         let database = Database::open(&path).expect("database");
-        let mut note = still::models::Note::new(still::models::NoteType::Normal);
+        let mut note = nen::models::Note::new(nen::models::NoteType::Normal);
         note.title = "Font test".into();
         note.content = "First line\nSecond line".into();
         database.save_note(&note).expect("note");
@@ -390,7 +390,7 @@ fn editor_font_slider_changes_rendered_text_size(cx: &mut TestAppContext) {
         ..Session::default()
     };
     cx.update(gpui_kit::init);
-    cx.update(|cx| still::theme::apply(&settings, cx));
+    cx.update(|cx| nen::theme::apply(&settings, cx));
     let state = cx.new(|cx| AppState::new(store.clone(), settings, session, cx));
     let (handle, root) = cx.update(|cx| {
         gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
@@ -488,7 +488,7 @@ fn dim_slider_changes_tint_and_overlay_covers_the_image(cx: &mut TestAppContext)
         ..Settings::default()
     };
     cx.update(gpui_kit::init);
-    cx.update(|cx| still::theme::apply(&settings, cx));
+    cx.update(|cx| nen::theme::apply(&settings, cx));
     let state = cx.new(|cx| AppState::new(store.clone(), settings, Session::default(), cx));
     state.update(cx, |state, _| {
         state.background =
@@ -522,7 +522,7 @@ fn dim_slider_changes_tint_and_overlay_covers_the_image(cx: &mut TestAppContext)
             dim > 0. && dim < 0.58,
             "Low Dim changes must reach settings: {dim}"
         );
-        assert_eq!(still::theme::background_dim(&state.settings), dim);
+        assert_eq!(nen::theme::background_dim(&state.settings), dim);
     });
     store
         .request(Request::Shutdown)
@@ -587,16 +587,16 @@ fn custom_wallpapers_keep_editor_text_readable_in_both_themes(cx: &mut TestAppCo
                     ..Settings::default()
                 };
                 cx.update(|cx| {
-                    still::theme::apply(&settings, cx);
+                    nen::theme::apply(&settings, cx);
                     assert_eq!(
-                        still::theme::background_dim(&settings),
+                        nen::theme::background_dim(&settings),
                         dim,
                         "{theme}/{surface}: Dim must match the displayed percentage"
                     );
-                    let palette = still::theme::surfaces(&settings, cx);
+                    let palette = nen::theme::surfaces(&settings, cx);
                     // White is the worst backdrop for the dark theme; black for light.
                     let source = if theme == "Dark" {
-                        1. - still::theme::background_dim(&settings)
+                        1. - nen::theme::background_dim(&settings)
                     } else {
                         0.
                     };
@@ -633,7 +633,7 @@ fn category_creation_moves_and_sidebar_visibility_survive_restart(cx: &mut TestA
     // normal-motion geometry is inspected in the native GPU captures.
     settings.reduced_motion = true;
     cx.update(gpui_kit::init);
-    cx.update(|cx| still::theme::apply(&settings, cx));
+    cx.update(|cx| nen::theme::apply(&settings, cx));
     let state = cx.new(|cx| AppState::new(store.clone(), settings, session, cx));
     let (window, _) = cx.update(|cx| {
         gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
@@ -849,7 +849,7 @@ fn failed_autosave_preserves_the_unsaved_buffer(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn an_inflight_note_action_cannot_recreate_a_deleted_note(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
-    use still::{
+    use nen::{
         models::{Note, NoteType},
         storage::Response,
     };
@@ -893,7 +893,7 @@ fn keyboard_creation_typing_and_reopening_tabs(cx: &mut TestAppContext) {
     let (store, _, _, _) = Store::start(path.clone()).expect("test database");
     cx.update(gpui_kit::init);
     cx.update(|cx| {
-        still::theme::apply(
+        nen::theme::apply(
             &Settings {
                 theme: "Light".into(),
                 ..Settings::default()
@@ -967,8 +967,8 @@ fn keyboard_creation_typing_and_reopening_tabs(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn floating_note_and_inline_reminder_share_persistent_state(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
-    use still::storage::Response;
-    use still::ui::floating::FloatingWindow;
+    use nen::storage::Response;
+    use nen::ui::floating::FloatingWindow;
     let path = std::env::temp_dir().join(format!("still-island-{}.sqlite", uuid::Uuid::new_v4()));
     let (store, _, _, _) = Store::start(path.clone()).expect("database");
     cx.update(gpui_kit::init);
@@ -1046,7 +1046,7 @@ fn floating_note_and_inline_reminder_share_persistent_state(cx: &mut TestAppCont
 #[gpui_kit::test]
 fn shortcut_capture_detects_conflicts_and_updates_commands(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
-    use still::ui::settings::SettingsView;
+    use nen::ui::settings::SettingsView;
     let path =
         std::env::temp_dir().join(format!("still-shortcuts-{}.sqlite", uuid::Uuid::new_v4()));
     let (store, _, _, _) = Store::start(path.clone()).expect("database");

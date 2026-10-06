@@ -788,7 +788,7 @@ impl Render for AppWindow {
         );
         let mut root = div()
             .id("app")
-            .key_context("Still")
+            .key_context("Nen")
             .track_focus(&self.focus)
             .size_full()
             .v_flex()

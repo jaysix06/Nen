@@ -538,7 +538,7 @@ impl Render for SettingsView {
                 .child(self.toggle("tray","Close to tray",settings.minimize_to_tray,cx))
                 .child(self.toggle("restore","Restore previous tabs",settings.restore_tabs,cx))
                 .child(self.choice("type","New note type",if settings.default_note_type==NoteType::Normal {"Normal"}else{"Scratch"}.into(),vec!["Normal","Scratch"],cx))
-                .child(div().mt_4().text_xs().text_color(p.muted).child("Reminders continue while Still is in the tray. Quitting stops them until Still opens again."));
+                .child(div().mt_4().text_xs().text_color(p.muted).child("Reminders continue while Nen is in the tray. Quitting stops them until Nen opens again."));
             }
             "Appearance" => {
                 content = content
@@ -587,7 +587,7 @@ impl Render for SettingsView {
                                 Button::new("default-wallpaper")
                                     .ghost()
                                     .small()
-                                    .label("Still")
+                                    .label("Nen")
                                     .tooltip("Use the bundled wallpaper")
                                     .on_click(move |_, _, cx| {
                                         restore.update(cx, |state, cx| {

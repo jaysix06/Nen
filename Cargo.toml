@@ -1,6 +1,6 @@
 [package]
-name = "still"
-version = "0.2.5"
+name = "nen"
+version = "0.2.6"
 edition = "2024"
 description = "A quiet, local-first native notes app"
 license = "MIT"

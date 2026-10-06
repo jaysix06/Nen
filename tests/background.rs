@@ -1,4 +1,4 @@
-use still::{background, models::Settings};
+use nen::{background, models::Settings};
 
 #[test]
 fn importing_and_transforming_a_background_never_changes_the_original() -> anyhow::Result<()> {

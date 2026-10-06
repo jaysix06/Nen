@@ -1,6 +1,11 @@
-# Still
+# Nen
 
-Still is a local Windows notes utility built with Rust, GPUI and SQLite.
+Nen is a local Windows notes utility built with Rust, GPUI and SQLite.
+
+Nen reuses an existing Still data directory when present. The notification
+identity, COM activator, database schema and single-instance mutex remain stable
+across the rename so existing reminders and data keep working. New installations
+use the Nen application-data directory.
 
 ## Implementation
 

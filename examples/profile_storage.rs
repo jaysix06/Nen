@@ -1,8 +1,8 @@
-use std::{path::Path, time::Instant};
-use still::{
+use nen::{
     models::{Collection, Note, NoteType},
     storage::Database,
 };
+use std::{path::Path, time::Instant};
 fn main() -> anyhow::Result<()> {
     let db = Database::open(Path::new(":memory:"))?;
     let seed = Instant::now();

@@ -1,4 +1,6 @@
-# Still
+# Nen
+
+念 · Nen · thought, attention, remembrance.
 
 A local-first Windows notes app built with Rust, GPUI and SQLite.
 
@@ -6,13 +8,13 @@ Write it. Keep it accessible. Get reminded. Move on.
 
 ## Run
 
-Open `dist/Still.exe`. No account or internet connection is required.
+Open `dist/Nen.exe`. No account or internet connection is required.
 Windows needs the Microsoft Visual C++ x64 runtime (`VCRUNTIME140.dll`),
 which is already installed on this development machine.
-Closing the window keeps Still in the tray by default. Use **Quit** in the
+Closing the window keeps Nen in the tray by default. Use **Quit** in the
 tray menu to exit, or change **Settings → General → Close to tray**.
 Reminders work while the process is running, including in the tray. Missed
-reminders are handled when Still opens or Windows resumes.
+reminders are handled when Nen opens or Windows resumes.
 
 ## Features
 
@@ -109,19 +111,22 @@ the same tool on PATH or through the Windows SDK installation.
 
 ## Local data
 
-Application data is stored under `%LOCALAPPDATA%\Still\Still\data`:
+Application data is stored under `%LOCALAPPDATA%\Nen\Nen\data`:
 `notes.sqlite`, its SQLite journal files, managed backgrounds and bounded logs.
+Existing Still installations continue using `%LOCALAPPDATA%\Still\Still\data`
+so notes, settings, reminders and image paths remain intact.
 The app registers its own Windows notification identity and COM activator under
 the current user's registry. Startup registration is optional. It does not
 change Windows notification preferences.
 
 Windows must allow notifications for reminder banners to appear. If delivery is
-disabled, Still shows an error and keeps the reminder in the Reminders page.
+disabled, Nen shows an error and keeps the reminder in the Reminders page.
 Quitting stops scheduling until the app opens again. It cannot wake a powered-off
 computer. Notes and images stay local. Logs do not include note content.
 There are no accounts, telemetry, analytics, advertising or cloud services.
 
-`STILL_DATA_DIR` can point to a separate directory for development and tests.
+`NEN_DATA_DIR` can point to a separate directory for development and tests.
+The previous `STILL_DATA_DIR` override is also accepted.
 Do not set it to a real user's database during automated testing.
 
 The wrapper requests a graceful, save-flushing exit from this checkout's running

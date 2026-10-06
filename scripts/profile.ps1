@@ -1,14 +1,14 @@
-param([string]$Executable = 'target/release/still.exe', [int]$IdleSeconds = 10)
+param([string]$Executable = 'target/release/nen.exe', [int]$IdleSeconds = 10)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $binary = (Resolve-Path (Join-Path $projectRoot $Executable)).Path
 $data = Join-Path $projectRoot ('.tools/profile-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $data -Force | Out-Null
-if (-not ('StillProfileWindow' -as [type])) {
+if (-not ('NenProfileWindow' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-public static class StillProfileWindow {
+public static class NenProfileWindow {
     private delegate bool EnumProc(IntPtr hwnd, IntPtr parameter);
     [DllImport("user32.dll")] private static extern bool EnumWindows(EnumProc callback, IntPtr parameter);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
@@ -22,7 +22,7 @@ public static class StillProfileWindow {
             if (processId == target) {
                 var title = new System.Text.StringBuilder(100);
                 GetWindowText(hwnd, title, 100);
-                if (title.ToString() == "Still") { result = hwnd; return false; }
+                if (title.ToString() == "Nen") { result = hwnd; return false; }
             }
             return true;
         }, IntPtr.Zero);
@@ -40,21 +40,21 @@ public static class StillProfileWindow {
 }
 '@
 }
-$previousData = $env:STILL_DATA_DIR
+$previousData = $env:NEN_DATA_DIR
 $process = $null
 try {
-    $env:STILL_DATA_DIR = $data
+    $env:NEN_DATA_DIR = $data
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $process = Start-Process -FilePath $binary -ArgumentList '--demo' -PassThru -WindowStyle Hidden
     do {
         Start-Sleep -Milliseconds 20
         $process.Refresh()
-        if ($process.HasExited) { throw 'Still exited before its window opened.' }
-        if ($watch.Elapsed.TotalSeconds -gt 15) { throw 'Timed out waiting for Still.' }
-        $window = [StillProfileWindow]::MainWindow($process.Id)
+        if ($process.HasExited) { throw 'Nen exited before its window opened.' }
+        if ($watch.Elapsed.TotalSeconds -gt 15) { throw 'Timed out waiting for Nen.' }
+        $window = [NenProfileWindow]::MainWindow($process.Id)
     } while ($window -eq [IntPtr]::Zero)
     $windowMs = $watch.Elapsed.TotalMilliseconds
-    [StillProfileWindow]::Show($window)
+    [NenProfileWindow]::Show($window)
     Start-Sleep -Seconds 2
     $process.Refresh()
     $cpu = $process.TotalProcessorTime.TotalMilliseconds
@@ -63,7 +63,7 @@ try {
     $process.Refresh()
     if ($process.HasExited) { throw 'The profiled process exited during measurement.' }
     $foregroundCpu = ($process.TotalProcessorTime.TotalMilliseconds - $cpu) / $sample.Elapsed.TotalMilliseconds * 100
-    [StillProfileWindow]::Hide($window)
+    [NenProfileWindow]::Hide($window)
     Start-Sleep -Seconds 1
     $process.Refresh()
     $cpu = $process.TotalProcessorTime.TotalMilliseconds
@@ -81,8 +81,8 @@ try {
     } | ConvertTo-Json
 } finally {
     if ($process -and -not $process.HasExited) {
-        [StillProfileWindow]::Quit($process.Id)
+        [NenProfileWindow]::Quit($process.Id)
         if (-not $process.WaitForExit(10000)) { Write-Warning 'Choose Quit in the test instance tray menu to finish the profile.' }
     }
-    $env:STILL_DATA_DIR = $previousData
+    $env:NEN_DATA_DIR = $previousData
 }

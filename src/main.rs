@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use gpui_kit::*;
-use still::{
+use nen::{
     app::AppState,
     diagnostics,
     models::*,
@@ -11,9 +11,9 @@ use still::{
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("Could not start Still: {error}");
+        eprintln!("Could not start Nen: {error}");
         log::error!("Startup failed: {error}");
-        still::platform::startup_error(&error.to_string());
+        nen::platform::startup_error(&error.to_string());
     }
 }
 
@@ -23,20 +23,22 @@ fn run() -> anyhow::Result<()> {
     use std::hash::{Hash, Hasher};
     let mut hash = std::collections::hash_map::DefaultHasher::new();
     directory.hash(&mut hash);
-    let Some(_instance) = still::platform::instance(&format!("Local\\Still-{:x}", hash.finish()))?
+    // Share the legacy mutex so an older running instance cannot race the same database.
+    let Some(_instance) = nen::platform::instance(&format!("Local\\Still-{:x}", hash.finish()))?
     else {
         return Ok(());
     };
     if std::env::args().any(|arg| arg == "--demo") {
         anyhow::ensure!(
-            std::env::var_os("STILL_DATA_DIR").is_some(),
-            "Use STILL_DATA_DIR for demo data so your notes stay separate."
+            std::env::var_os("NEN_DATA_DIR").is_some()
+                || std::env::var_os("STILL_DATA_DIR").is_some(),
+            "Use NEN_DATA_DIR for demo data so your notes stay separate."
         );
         seed_demo(&directory.join("notes.sqlite"))?;
     }
     let (store, settings, session, events) = Store::start(directory.join("notes.sqlite"))?;
     gpui_kit::application()
-        .with_assets(still::assets::StillAssets)
+        .with_assets(nen::assets::NenAssets)
         .run(move |cx| {
             gpui_kit::init(cx);
             theme::apply(&settings, cx);
@@ -72,13 +74,13 @@ fn run() -> anyhow::Result<()> {
                     WindowBounds::Windowed(bounds)
                 }),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("Still".into()),
+                    title: Some("Nen".into()),
                     appears_transparent: true,
                     ..Default::default()
                 }),
                 app_owns_titlebar_drag: true,
                 window_min_size: Some(size(px(820.), px(540.))),
-                app_id: Some("dev.still.notes".into()),
+                app_id: Some(nen::platform::APP_ID.into()),
                 ..Default::default()
             };
             match gpui_kit::open_window(options, cx, |window, cx| {
@@ -151,7 +153,7 @@ fn run() -> anyhow::Result<()> {
                             if floating {
                                 let state = capture_state.clone();
                                 cx.update(|cx| {
-                                    still::ui::floating::show(state.clone(), true, cx);
+                                    nen::ui::floating::show(state.clone(), true, cx);
                                     if std::env::args().any(|arg| arg == "--capture-results")
                                         && let Some(view) = state.read(cx).floating_view.clone()
                                     {
@@ -283,7 +285,7 @@ fn run() -> anyhow::Result<()> {
                 }
             }
             let config = state.read(cx).settings.clone();
-            match still::platform::Desktop::new(&config) {
+            match nen::platform::Desktop::new(&config) {
                 Ok((desktop, platform_events, warnings)) => {
                     if let Some(handle) = state.read(cx).main_window {
                         let result = handle.update(cx, |_, window, _| desktop.attach(window));
@@ -301,10 +303,10 @@ fn run() -> anyhow::Result<()> {
                     cx.spawn(async move |cx| {
                         while let Ok(event) = platform_events.recv().await {
                             platform_state.update(cx, |state, cx| {
-                                use still::platform::PlatformEvent;
+                                use nen::platform::PlatformEvent;
                                 match event {
                                     PlatformEvent::Wake => {
-                                        let _ = state.store.request(still::storage::Request::Wake);
+                                        let _ = state.store.request(nen::storage::Request::Wake);
                                     }
                                     PlatformEvent::Hotkey(id) => {
                                         let command = state
@@ -332,12 +334,12 @@ fn run() -> anyhow::Result<()> {
                                                     state.desktop_command("open_app", cx);
                                                 }
                                                 "done" => state.perform(
-                                                    still::storage::Request::Complete(id.into()),
+                                                    nen::storage::Request::Complete(id.into()),
                                                     "Reminder completed",
                                                     cx,
                                                 ),
                                                 "snooze" => state.perform(
-                                                    still::storage::Request::Snooze(
+                                                    nen::storage::Request::Snooze(
                                                         id.into(),
                                                         state.settings.snooze_minutes,
                                                     ),
@@ -367,10 +369,10 @@ fn run() -> anyhow::Result<()> {
                     .as_ref()
                     .is_some_and(|d| d.tray.is_some());
             if start_in_tray && let Some(handle) = state.read(cx).main_window {
-                let _ = handle.update(cx, |_, window, cx| still::platform::hide(window, cx));
+                let _ = handle.update(cx, |_, window, cx| nen::platform::hide(window, cx));
             }
             if config.floating_on_startup {
-                still::ui::floating::show(state.clone(), true, cx);
+                nen::ui::floating::show(state.clone(), true, cx);
             }
             if !start_in_tray {
                 cx.activate(true);

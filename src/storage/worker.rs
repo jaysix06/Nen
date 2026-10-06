@@ -53,7 +53,7 @@ impl Store {
         let (sender, receiver) = mpsc::channel::<(Request, Reply)>();
         let (events, event_receiver) = async_channel::unbounded();
         std::thread::Builder::new()
-            .name("still-storage".into())
+            .name("nen-storage".into())
             .spawn(move || {
                 let mut database = database;
                 loop {

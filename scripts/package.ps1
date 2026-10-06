@@ -5,7 +5,17 @@ if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
 & (Join-Path $PSScriptRoot 'stop-development.ps1') -IncludePackaged
 $destination = Join-Path $projectRoot 'dist'
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $projectRoot 'target/release/still.exe') -Destination (Join-Path $destination 'Still.exe')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'target/release/nen.exe') -Destination (Join-Path $destination 'Nen.exe')
+$legacyExecutable = Join-Path $destination 'Still.exe'
+# Preserve an already-enabled startup entry belonging to this exact packaged executable.
+$startup = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Run', $true)
+try {
+    if ($startup -and $startup.GetValue('Still') -ieq ('"' + $legacyExecutable + '" --startup')) {
+        $startup.SetValue('Nen', ('"' + (Join-Path $destination 'Nen.exe') + '" --startup'))
+        $startup.DeleteValue('Still')
+    }
+} finally { if ($startup) { $startup.Dispose() } }
+if (Test-Path -LiteralPath $legacyExecutable) { Remove-Item -LiteralPath $legacyExecutable }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md') -Destination $destination
 Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination $destination
 $documentation = Join-Path $destination 'docs'
@@ -20,4 +30,4 @@ Get-ChildItem -LiteralPath (Join-Path $projectRoot 'docs/screenshots') -File | F
     Copy-Item -LiteralPath $_.FullName -Destination $screenshots
 }
 & (Join-Path $PSScriptRoot 'notices.ps1')
-Get-FileHash -LiteralPath (Join-Path $destination 'Still.exe') -Algorithm SHA256 | Format-List
+Get-FileHash -LiteralPath (Join-Path $destination 'Nen.exe') -Algorithm SHA256 | Format-List

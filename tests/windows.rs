@@ -1,6 +1,6 @@
 #![cfg(windows)]
 use global_hotkey::GlobalHotKeyManager;
-use still::{
+use nen::{
     models::Settings,
     platform::{Desktop, parse_hotkey},
 };

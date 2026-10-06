@@ -1,5 +1,5 @@
 //! Exercises real Windows registrations and submits a native notification.
-use still::{models::*, platform::Desktop};
+use nen::{models::*, platform::Desktop};
 fn main() -> anyhow::Result<()> {
     let mut settings = Settings::default();
     for (action, key) in [
@@ -15,7 +15,7 @@ fn main() -> anyhow::Result<()> {
     let reminder = Reminder {
         id: uuid::Uuid::new_v4().to_string(),
         note_id: uuid::Uuid::new_v4().to_string(),
-        title: "Still test reminder".into(),
+        title: "Nen test reminder".into(),
         preview: "Native notification delivery check.".into(),
         scheduled_at: chrono::Utc::now().timestamp(),
         recurrence: Recurrence::Never,
@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     std::thread::sleep(std::time::Duration::from_secs(2));
     while let Ok(event) = events.try_recv() {
         anyhow::ensure!(
-            !matches!(event, still::platform::PlatformEvent::Error(_)),
+            !matches!(event, nen::platform::PlatformEvent::Error(_)),
             "{event:?}"
         );
     }

@@ -9,9 +9,9 @@ try {
     $metadata = $json | ConvertFrom-Json
     $resolved = @{}
     foreach ($node in $metadata.resolve.nodes) { $resolved[$node.id] = $true }
-    $packages = $metadata.packages | Where-Object { $resolved.ContainsKey($_.id) -and $_.name -ne 'still' } | Sort-Object name,version
+    $packages = $metadata.packages | Where-Object { $resolved.ContainsKey($_.id) -and $_.name -ne 'nen' } | Sort-Object name,version
     $text = New-Object Text.StringBuilder
-    [void]$text.AppendLine('Still: resolved Rust dependency notices (including build/test dependencies).')
+    [void]$text.AppendLine('Nen: resolved Rust dependency notices (including build/test dependencies).')
     [void]$text.AppendLine('Unmodified source releases are available at the linked crate pages.')
     [void]$text.AppendLine()
     [void]$text.AppendLine('Phosphor Icons: Fill and Regular SVG artwork, embedded locally.')

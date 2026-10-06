@@ -1,6 +1,6 @@
 use chrono::{TimeZone, Utc};
+use nen::{models::*, storage::Database};
 use std::path::Path;
-use still::{models::*, storage::Database};
 
 #[test]
 fn categories_filter_search_and_deletion_preserves_notes() -> anyhow::Result<()> {
@@ -185,7 +185,7 @@ fn reminder_completion_is_atomic_and_idempotent() -> anyhow::Result<()> {
 
 #[test]
 fn worker_shutdown_barrier_flushes_queued_writes() -> anyhow::Result<()> {
-    use still::storage::{Request, Store};
+    use nen::storage::{Request, Store};
     let path = std::env::temp_dir().join(format!("still-worker-{}.sqlite", uuid::Uuid::new_v4()));
     let (store, _, _, _) = Store::start(path.clone())?;
     let mut note = Note::new(NoteType::Normal);

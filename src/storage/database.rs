@@ -22,7 +22,7 @@ impl Database {
             "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;",
         )?;
         let version: u32 = connection.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        anyhow::ensure!(version <= 4, "This database needs a newer version of Still");
+        anyhow::ensure!(version <= 4, "This database needs a newer version of Nen");
         if version < 1 {
             let tx = connection.transaction()?;
             tx.execute_batch(include_str!("schema.sql"))?;

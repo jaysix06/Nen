@@ -5,7 +5,7 @@ toolchain. The executable uses native GPUI rendering, not a browser.
 
 ## Checks
 
-- `cargo test --locked --features ui-testing`: 32 passing tests.
+- `cargo test --locked --features ui-testing`: 36 passing tests.
 - `cargo clippy --locked --features ui-testing --all-targets -- -D warnings`: clean.
 - `cargo fmt -- --check`: clean.
 - `cargo build --locked --release`: successful; UI testing features excluded.
@@ -18,7 +18,13 @@ toolchain. The executable uses native GPUI rendering, not a browser.
   [results](screenshots/results.png), [editor](screenshots/note.png),
   [reminder](screenshots/reminder.png) and [appearance](screenshots/settings.png).
 - Normal Windows launches and restored sessions were checked for callback errors.
-- Packaged Still 0.2.5 starts and flushes a graceful shutdown with a clean release log.
+- Packaged Nen 0.2.6 starts and flushes a graceful shutdown with a clean release log.
+
+The 0.2.6 rename retains the notification identity, COM activator and legacy
+single-instance mutex. Data checks verify existing notes and preferences reopen
+from the Still directory and new installations use Nen. Startup checks limit
+legacy-entry removal to the app's sibling executable. The supplied transparent
+artwork is packaged into seven ICO sizes and matching tray/notification PNGs.
 
 The 0.2.5 asset check verifies Regular artwork for plus, minus, close,
 maximize and restore controls, while other icons keep Fill artwork.
@@ -78,7 +84,7 @@ fail; the original code was restored before the final suite.
 
 ## Measurements
 
-Still 0.2.5 release executable: 31,093,760 bytes (29.65 MiB), including its local wallpaper.
+Nen 0.2.6 release executable: 31,927,808 bytes (30.45 MiB), including its local wallpaper.
 The performance samples below were collected with 0.2.0.
 
 | Measurement | Result |

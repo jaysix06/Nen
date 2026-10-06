@@ -2,9 +2,9 @@ use gpui_kit::{AssetSource, SharedString};
 use std::borrow::Cow;
 
 /// Local Phosphor artwork, with line-style symbols for editing and window controls.
-pub struct StillAssets;
+pub struct NenAssets;
 
-impl AssetSource for StillAssets {
+impl AssetSource for NenAssets {
     fn load(&self, path: &str) -> gpui_kit::Result<Option<Cow<'static, [u8]>>> {
         macro_rules! icon {
             ($name:literal) => {

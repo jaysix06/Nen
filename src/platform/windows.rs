@@ -22,13 +22,14 @@ use windows::{
 };
 use winreg::{RegKey, enums::HKEY_CURRENT_USER};
 
+// Keep the notification identity stable across the rename, including pending reminder activations.
 pub const APP_ID: &str = "dev.still.notes";
 pub fn startup_error(error: &str) {
     unsafe {
         let _ = MessageBoxW(
             None,
-            &HSTRING::from(format!("Still couldn't start.\n\n{error}")),
-            w!("Still"),
+            &HSTRING::from(format!("Nen couldn't start.\n\n{error}")),
+            w!("Nen"),
             MB_OK | MB_ICONERROR,
         );
     }
@@ -81,12 +82,15 @@ impl Desktop {
         let key = RegKey::predef(HKEY_CURRENT_USER)
             .create_subkey(format!("Software\\Classes\\AppUserModelId\\{APP_ID}"))?
             .0;
-        key.set_value("DisplayName", &"Still")?;
-        let icon_path = crate::diagnostics::data_directory()?.join("app-icon-v010.png");
+        key.set_value("DisplayName", &"Nen")?;
+        let icon_path = crate::diagnostics::data_directory()?.join("nen-icon-v026.png");
         if !icon_path.exists() {
-            std::fs::write(&icon_path, include_bytes!("../../assets/still.png"))?;
+            std::fs::write(&icon_path, include_bytes!("../../assets/nen.png"))?;
         }
         key.set_value("IconUri", &icon_path.to_string_lossy().as_ref())?;
+        if settings.launch_at_startup {
+            set_startup(true)?;
+        }
         let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_ID))?;
         unsafe { SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(APP_ID)) }?;
         let activation = super::notification_activation::Registration::new(sender.clone())?;
@@ -123,7 +127,7 @@ impl Desktop {
         let menu = Menu::new();
         let mut ids = HashMap::new();
         for (label, command) in [
-            ("Open Notes", "open_app"),
+            ("Open Nen", "open_app"),
             ("Quick Note", "quick_note"),
             ("Show Floating Bar", "show_float"),
             ("Settings", "settings"),
@@ -142,25 +146,13 @@ impl Desktop {
                 let _ = tx.try_send(PlatformEvent::Command(command.clone()));
             }
         }));
-        let mut pixels = vec![0u8; 32 * 32 * 4];
-        for y in 3..29 {
-            for x in 6..26 {
-                let i = (y * 32 + x) * 4;
-                let line = x == 6
-                    || x == 25
-                    || y == 3
-                    || y == 28
-                    || x == 10
-                    || (y % 6 == 0 && x > 13 && x < 23);
-                if line {
-                    pixels[i..i + 4].copy_from_slice(&[166, 190, 160, 255]);
-                }
-            }
-        }
+        let image =
+            image::load_from_memory(include_bytes!("../../assets/nen-tray.png"))?.into_rgba8();
+        let (width, height) = image.dimensions();
         Ok(TrayIconBuilder::new()
-            .with_tooltip("Still")
+            .with_tooltip("Nen")
             .with_menu(Box::new(menu))
-            .with_icon(Icon::from_rgba(pixels, 32, 32)?)
+            .with_icon(Icon::from_rgba(image.into_raw(), width, height)?)
             .build()?)
     }
     pub fn action_for_hotkey(&self, id: u32) -> Option<&str> {
@@ -236,7 +228,7 @@ impl Desktop {
                 } else if setting == NotificationSetting::DisabledByGroupPolicy {
                     "Windows notification policy prevents reminders from being displayed."
                 } else {
-                    "Windows notifications are disabled for Still. Check Windows notification settings."
+                    "Windows notifications are disabled for Nen. Check Windows notification settings."
                 }
             ));
         }
@@ -487,17 +479,43 @@ pub fn set_startup(enabled: bool) -> Result<()> {
     let key = RegKey::predef(HKEY_CURRENT_USER)
         .create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")?
         .0;
+    let exe = std::env::current_exe()?;
     if enabled {
-        let exe = std::env::current_exe()?;
-        key.set_value("Still", &format!("\"{}\" --startup", exe.display()))?;
+        key.set_value("Nen", &format!("\"{}\" --startup", exe.display()))?;
     } else {
-        match key.delete_value("Still") {
+        match key.delete_value("Nen") {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.into()),
         }
     }
+    if let Ok(command) = key.get_value::<String, _>("Still")
+        && owns_legacy_startup(&command, &exe)
+    {
+        key.delete_value("Still")?;
+    }
     Ok(())
+}
+
+fn owns_legacy_startup(command: &str, executable: &std::path::Path) -> bool {
+    let Some((path, arguments)) = command
+        .strip_prefix('"')
+        .and_then(|value| value.split_once('"'))
+    else {
+        return false;
+    };
+    let legacy = std::path::Path::new(path);
+    arguments.trim() == "--startup"
+        && legacy
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("Still.exe"))
+        && legacy
+            .parent()
+            .zip(executable.parent())
+            .is_some_and(|(a, b)| {
+                a.to_string_lossy()
+                    .eq_ignore_ascii_case(&b.to_string_lossy())
+            })
 }
 
 unsafe extern "system" fn window_messages(
@@ -572,12 +590,39 @@ pub fn instance(name: &str) -> Result<Option<Instance>> {
         let handle = CreateMutexW(None, false, &HSTRING::from(name))?;
         if GetLastError() == ERROR_ALREADY_EXISTS {
             let _ = CloseHandle(handle);
-            if let Ok(hwnd) = FindWindowW(None, w!("Still")) {
+            if let Ok(hwnd) =
+                FindWindowW(None, w!("Nen")).or_else(|_| FindWindowW(None, w!("Still")))
+            {
                 let _ = ShowWindow(hwnd, SW_RESTORE);
                 let _ = SetForegroundWindow(hwnd);
             }
             return Ok(None);
         }
         Ok(Some(Instance(handle)))
+    }
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::*;
+    #[test]
+    fn startup_rename_only_removes_the_sibling_legacy_executable() {
+        let executable = std::path::Path::new(r"C:\Apps\Nen\Nen.exe");
+        assert!(owns_legacy_startup(
+            r#""C:\Apps\Nen\Still.exe" --startup"#,
+            executable
+        ));
+        assert!(!owns_legacy_startup(
+            r#""C:\Other\Still.exe" --startup"#,
+            executable
+        ));
+        assert!(!owns_legacy_startup(
+            r#""C:\Apps\Nen\Other.exe" --startup"#,
+            executable
+        ));
+        assert!(!owns_legacy_startup(
+            r#""C:\Apps\Nen\Still.exe" --other-action"#,
+            executable
+        ));
     }
 }

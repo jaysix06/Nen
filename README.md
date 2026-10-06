@@ -1,4 +1,4 @@
-# Nen
+# 念 | Nen
 
 念 · Nen · thought, attention, remembrance.
 

@@ -704,7 +704,14 @@ impl Render for AppWindow {
         };
         let color = u32::from_str_radix(config.background_color.trim_start_matches('#'), 16)
             .unwrap_or(0xf6f5f1);
-        let mut background = div().absolute().size_full().bg(rgb(color));
+        let mut background = div()
+            .id("wallpaper-layer")
+            .test_support()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .bg(rgb(color));
         if let Some(path) = self.state.read(cx).background.clone() {
             background = background.child(
                 img(path)
@@ -719,9 +726,13 @@ impl Render for AppWindow {
         }
         background = background.child(
             div()
+                .id("wallpaper-dim")
+                .test_support()
                 .absolute()
+                .top_0()
+                .left_0()
                 .size_full()
-                .bg(rgb(0x000000).alpha(crate::theme::background_dim(&config, cx))),
+                .bg(rgb(0x000000).alpha(crate::theme::background_dim(&config))),
         );
         let mut root = div()
             .id("app")

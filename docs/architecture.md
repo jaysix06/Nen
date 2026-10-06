@@ -61,8 +61,9 @@ a 200 ms interruptible spring, with a configurable Ctrl+B default.
 
 The bundled lake photograph remains local. Image transformations run off the
 UI thread and use an atomic disk cache keyed by source metadata and transform
-parameters. Dark translucent surfaces keep custom backgrounds readable through
-a minimum tint. Contrast checks cover editor text and secondary text across
+parameters. Dim changes the overlay opacity directly, without image processing
+or a minimum tint. Dark foreground surfaces keep custom backgrounds readable.
+Contrast checks cover editor text and secondary text across
 Light/Dark and Opaque/Frosted/Clear combinations. Editor text is larger than
 interface text. Hairline separators divide functional regions; settings use
 compact rows. Settled motion requests no frames.

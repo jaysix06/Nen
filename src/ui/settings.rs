@@ -289,6 +289,8 @@ impl SettingsView {
         row(
             label,
             div()
+                .id(format!("settings-slider-{key}"))
+                .test_support()
                 .flex()
                 .items_center()
                 .gap_4()

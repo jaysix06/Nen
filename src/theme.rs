@@ -80,13 +80,30 @@ pub fn apply(settings: &Settings, cx: &mut App) {
 
 pub fn surfaces(settings: &Settings, cx: &App) -> Palette {
     let mut p = palette(cx);
-    let (paper, sidebar, canvas) = match (settings.surface.as_str(), Theme::global(cx).is_dark()) {
-        ("Frosted", true) => (0.42, 0.66, 0.22),
-        ("Clear", true) => (0.28, 0.48, 0.16),
-        ("Frosted", false) => (0.72, 0.84, 0.62),
-        ("Clear", false) => (0.68, 0.8, 0.58),
-        _ => (0.98, 0.97, 0.96),
-    };
+    let (mut paper, mut sidebar, mut canvas) =
+        match (settings.surface.as_str(), Theme::global(cx).is_dark()) {
+            ("Frosted", true) => (0.42, 0.66, 0.22),
+            ("Clear", true) => (0.28, 0.48, 0.16),
+            ("Frosted", false) => (0.72, 0.84, 0.62),
+            ("Clear", false) => (0.68, 0.8, 0.58),
+            _ => (0.98, 0.97, 0.96),
+        };
+    // Protect foreground contrast on arbitrary (including white) backgrounds
+    // through the surfaces, without imposing a dead zone on the Dim control.
+    if Theme::global(cx).is_dark()
+        && (settings.background_image.is_some() || !settings.default_wallpaper)
+    {
+        let minimum = if settings.surface == "Frosted" {
+            0.82
+        } else {
+            0.78
+        };
+        paper = f32::max(paper, minimum);
+        sidebar = f32::max(sidebar, minimum);
+        canvas = f32::max(canvas, minimum);
+    } else if settings.background_image.is_some() || !settings.default_wallpaper {
+        canvas = f32::max(canvas, 0.78);
+    }
     p.paper = p.paper.alpha(paper);
     p.sidebar = p.sidebar.alpha(sidebar);
     p.canvas = p.canvas.alpha(canvas);
@@ -102,21 +119,8 @@ pub fn surfaces(settings: &Settings, cx: &App) -> Palette {
     p
 }
 
-pub fn background_dim(settings: &Settings, cx: &App) -> f32 {
-    // Custom images can be pure white. Preserve a readable foreground even
-    // when their dim slider is low; the bundled dark photograph needs less.
-    let minimum = if (settings.background_image.is_some() || !settings.default_wallpaper)
-        && Theme::global(cx).is_dark()
-    {
-        match settings.surface.as_str() {
-            "Clear" => 0.65,
-            "Frosted" => 0.58,
-            _ => 0.,
-        }
-    } else {
-        0.
-    };
-    settings.background_dim.clamp(0., 1.).max(minimum)
+pub fn background_dim(settings: &Settings) -> f32 {
+    settings.background_dim.clamp(0., 1.)
 }
 
 pub const LIST_WIDTH: f32 = 272.;

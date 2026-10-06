@@ -5,7 +5,7 @@ toolchain. The executable uses native GPUI rendering, not a browser.
 
 ## Checks
 
-- `cargo test --locked --features ui-testing`: 26 passing tests.
+- `cargo test --locked --features ui-testing`: 27 passing tests.
 - `cargo clippy --locked --features ui-testing --all-targets -- -D warnings`: clean.
 - `cargo fmt -- --check`: clean.
 - `cargo build --locked --release`: successful; UI testing features excluded.
@@ -18,7 +18,14 @@ toolchain. The executable uses native GPUI rendering, not a browser.
   [results](screenshots/results.png), [editor](screenshots/note.png),
   [reminder](screenshots/reminder.png) and [appearance](screenshots/settings.png).
 - Normal Windows launches and restored sessions were checked for callback errors.
-- Packaged Still 0.2.0 starts and flushes a graceful shutdown with a clean release log.
+- Packaged Still 0.2.1 starts and flushes a graceful shutdown with a clean release log.
+
+The 0.2.1 Dim fix anchors the tint to the image bounds and removes the hidden
+58%/65% minimum. A GPUI regression test clicks the actual slider and verifies
+the tint covers the image. Native captures at [0%](screenshots/dim-0.png),
+[20%](screenshots/dim-20.png) and [80%](screenshots/dim-80.png) show a custom
+wallpaper darkening across the range. Contrast checks cover editor, sidebar and
+chrome text at seven Dim values in both themes and all three surface modes.
 
 Tests cover migrations without data loss, Unicode and literal search, title
 ranking, pin/archive/delete, queued-write shutdown flushing, monthly recurrence
@@ -45,7 +52,8 @@ fail; the original code was restored before the final suite.
 
 ## Measurements
 
-Still 0.2.0 release executable: 31,051,264 bytes (29.61 MiB), including its local wallpaper.
+Still 0.2.1 release executable: 31,056,384 bytes (29.62 MiB), including its local wallpaper.
+The performance samples below were collected with 0.2.0.
 
 | Measurement | Result |
 |---|---:|

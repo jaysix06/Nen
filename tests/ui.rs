@@ -10,6 +10,62 @@ use still::{
 };
 
 #[gpui_kit::test]
+fn dim_slider_changes_tint_and_overlay_covers_the_image(cx: &mut TestAppContext) {
+    cx.dispatcher.allow_parking();
+    let path = std::env::temp_dir().join(format!("still-dim-{}.sqlite", uuid::Uuid::new_v4()));
+    let (store, _, _, _) = Store::start(path.clone()).expect("database");
+    let settings = Settings {
+        default_wallpaper: false,
+        background_dim: 0.,
+        reduced_motion: true,
+        ..Settings::default()
+    };
+    cx.update(gpui_kit::init);
+    cx.update(|cx| still::theme::apply(&settings, cx));
+    let state = cx.new(|cx| AppState::new(store.clone(), settings, Session::default(), cx));
+    state.update(cx, |state, _| {
+        state.background =
+            Some(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/still-lake.png"));
+        state.settings_page = Some("Background".into());
+    });
+    let (handle, _) = cx.update(|cx| {
+        gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+            cx.new(|cx| AppWindow::new(state.clone(), window, cx))
+        })
+        .expect("window")
+    });
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(
+            window.find("wallpaper-dim").bounds(),
+            window.find("wallpaper-layer").bounds(),
+            "Tint must cover the image rather than follow it in layout"
+        );
+        window.click_at(
+            "settings-slider-dim",
+            gpui_kit::point(gpui_kit::px(42.), gpui_kit::px(8.)),
+            cx,
+        );
+    })
+    .expect("adjust Dim");
+    cx.run_until_parked();
+    state.read_with(cx, |state, _| {
+        let dim = state.settings.background_dim;
+        assert!(
+            dim > 0. && dim < 0.58,
+            "Low Dim changes must reach settings: {dim}"
+        );
+        assert_eq!(still::theme::background_dim(&state.settings), dim);
+    });
+    store
+        .request(Request::Shutdown)
+        .recv_blocking()
+        .expect("shutdown")
+        .expect("flush");
+    std::fs::remove_file(path).expect("cleanup");
+}
+
+#[gpui_kit::test]
 fn legacy_appearance_upgrade_preserves_chosen_preferences(cx: &mut TestAppContext) {
     let path =
         std::env::temp_dir().join(format!("still-preferences-{}.sqlite", uuid::Uuid::new_v4()));
@@ -55,36 +111,48 @@ fn custom_wallpapers_keep_editor_text_readable_in_both_themes(cx: &mut TestAppCo
     cx.update(gpui_kit::init);
     for theme in ["Dark", "Light"] {
         for surface in ["Opaque", "Frosted", "Clear"] {
-            let settings = Settings {
-                theme: theme.into(),
-                surface: surface.into(),
-                background_image: Some("white-test-wallpaper.png".into()),
-                background_dim: 0.,
-                ..Settings::default()
-            };
-            cx.update(|cx| {
-                still::theme::apply(&settings, cx);
-                let palette = still::theme::surfaces(&settings, cx);
-                let paper = gpui_kit::Rgba::from(palette.paper);
-                // White is the worst backdrop for the dark theme; black for light.
-                let source = if theme == "Dark" {
-                    1. - still::theme::background_dim(&settings, cx)
-                } else {
-                    0.
+            for dim in [0., 0.05, 0.2, 0.35, 0.5, 0.65, 0.8] {
+                let settings = Settings {
+                    theme: theme.into(),
+                    surface: surface.into(),
+                    background_image: Some("white-test-wallpaper.png".into()),
+                    background_dim: dim,
+                    ..Settings::default()
                 };
-                let background = gpui_kit::Rgba {
-                    r: paper.r * paper.a + source * (1. - paper.a),
-                    g: paper.g * paper.a + source * (1. - paper.a),
-                    b: paper.b * paper.a + source * (1. - paper.a),
-                    a: 1.,
-                };
-                for text in [palette.text, palette.muted] {
-                    let a = luminance(background);
-                    let b = luminance(text.into());
-                    let contrast = (a.max(b) + 0.05) / (a.min(b) + 0.05);
-                    assert!(contrast >= 4.5, "{theme}/{surface}: contrast {contrast}");
-                }
-            });
+                cx.update(|cx| {
+                    still::theme::apply(&settings, cx);
+                    assert_eq!(
+                        still::theme::background_dim(&settings),
+                        dim,
+                        "{theme}/{surface}: Dim must match the displayed percentage"
+                    );
+                    let palette = still::theme::surfaces(&settings, cx);
+                    // White is the worst backdrop for the dark theme; black for light.
+                    let source = if theme == "Dark" {
+                        1. - still::theme::background_dim(&settings)
+                    } else {
+                        0.
+                    };
+                    for panel in [palette.paper, palette.sidebar, palette.canvas] {
+                        let paper = gpui_kit::Rgba::from(panel);
+                        let background = gpui_kit::Rgba {
+                            r: paper.r * paper.a + source * (1. - paper.a),
+                            g: paper.g * paper.a + source * (1. - paper.a),
+                            b: paper.b * paper.a + source * (1. - paper.a),
+                            a: 1.,
+                        };
+                        for text in [palette.text, palette.muted] {
+                            let a = luminance(background);
+                            let b = luminance(text.into());
+                            let contrast = (a.max(b) + 0.05) / (a.min(b) + 0.05);
+                            assert!(
+                                contrast >= 4.5,
+                                "{theme}/{surface}/{dim}: contrast {contrast}"
+                            );
+                        }
+                    }
+                });
+            }
         }
     }
 }

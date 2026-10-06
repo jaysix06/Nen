@@ -38,8 +38,9 @@ The editor stores Markdown as text. Remote images are not loaded by the reading
 view. Links open in the default application only when clicked. Frosted surfaces
 use a cached, locally blurred background; they do not continuously blur other
 desktop windows.
-Dark translucent surfaces retain a minimum readability tint on custom images
-and solid colors. Background transformations are cached between launches.
+Dim controls the background tint directly. Dark foreground surfaces preserve
+text contrast on custom images and solid colors without limiting the slider.
+Background transformations are cached between launches.
 
 ## Keyboard defaults
 

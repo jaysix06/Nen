@@ -10,6 +10,68 @@ use still::{
 };
 
 #[gpui_kit::test]
+fn category_creation_moves_and_sidebar_visibility_survive_restart(cx: &mut TestAppContext) {
+    cx.dispatcher.allow_parking();
+    let path = std::env::temp_dir().join(format!("still-category-{}.sqlite", uuid::Uuid::new_v4()));
+    let (store, settings, session, _) = Store::start(path.clone()).expect("database");
+    cx.update(gpui_kit::init);
+    let state = cx.new(|cx| AppState::new(store.clone(), settings, session, cx));
+    let (window, _) = cx.update(|cx| {
+        gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+            cx.new(|cx| AppWindow::new(state.clone(), window, cx))
+        })
+        .expect("window")
+    });
+    cx.run_until_parked();
+    state.update(cx, |state, cx| {
+        state.save_category("custom".into(), "Studio".into(), cx)
+    });
+    cx.run_until_parked();
+    cx.update_window(window, |_, window, cx| window.render_frame(cx))
+        .expect("frame");
+    cx.simulate_keystrokes(window, "ctrl-n");
+    cx.run_until_parked();
+    let id = state
+        .read_with(cx, |state, _| state.session.active.clone())
+        .expect("note");
+    assert_eq!(
+        state.read_with(cx, |state, _| state.notes[&id].note.category_id.clone()),
+        Some("custom".into())
+    );
+    cx.simulate_keystrokes(window, "ctrl-b");
+    cx.run_until_parked();
+    assert!(state.read_with(cx, |state, _| state.session.sidebar_hidden));
+    state.update(cx, |state, cx| {
+        state.edit(
+            &id,
+            "Studio draft".into(),
+            "Keep the latest text.".into(),
+            cx,
+        );
+        state.move_to_category(&id, Some("work".into()), cx);
+        state.delete_category("work".into(), cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        state.read_with(cx, |state, _| state.notes[&id].note.category_id.clone()),
+        None
+    );
+    state.update(cx, |state, cx| state.quit(cx));
+    cx.run_until_parked();
+    let db = Database::open(&path).expect("reopen");
+    let note = db.note(&id).expect("load").expect("note survives");
+    assert_eq!(note.content, "Keep the latest text.");
+    assert_eq!(note.category_id, None);
+    assert!(
+        db.get_setting::<Session>("session")
+            .expect("session")
+            .sidebar_hidden
+    );
+    drop(db);
+    std::fs::remove_file(path).expect("cleanup");
+}
+
+#[gpui_kit::test]
 fn failed_autosave_preserves_the_unsaved_buffer(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
     let path = std::env::temp_dir().join(format!("still-failure-{}.sqlite", uuid::Uuid::new_v4()));

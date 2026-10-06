@@ -344,6 +344,7 @@ pub fn action_label(action: &str) -> String {
         "reopen_tab" => "Reopen closed tab",
         "next_tab" => "Next tab",
         "previous_tab" => "Previous tab",
+        "toggle_sidebar" => "Toggle notes sidebar",
         "find" => "Find in note",
         "search" => "Search all notes",
         "reminder" => "Set reminder",

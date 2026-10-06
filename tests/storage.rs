@@ -15,9 +15,20 @@ fn categories_filter_search_and_deletion_preserves_notes() -> anyhow::Result<()>
     db.save_note(&note)?;
     let other = Note::new(NoteType::Normal);
     db.save_note(&other)?;
-    assert_eq!(db.list_in_category(Collection::All, "meeting", Some("custom"))?.len(), 1);
-    assert!(db.list_in_category(Collection::All, "meeting", Some("work"))?.is_empty());
-    assert_eq!(db.list_in_category(Collection::Pinned, "A", Some("custom"))?.len(), 1);
+    assert_eq!(
+        db.list_in_category(Collection::All, "meeting", Some("custom"))?
+            .len(),
+        1
+    );
+    assert!(
+        db.list_in_category(Collection::All, "meeting", Some("work"))?
+            .is_empty()
+    );
+    assert_eq!(
+        db.list_in_category(Collection::Pinned, "A", Some("custom"))?
+            .len(),
+        1
+    );
     assert_eq!(db.categories()?.last().expect("category").name, "Writing");
     note.is_archived = true;
     db.save_note(&note)?;
@@ -26,6 +37,12 @@ fn categories_filter_search_and_deletion_preserves_notes() -> anyhow::Result<()>
     assert_eq!(saved.content, "Private draft");
     assert!(saved.is_archived && saved.is_pinned);
     assert_eq!(saved.category_id, None);
+    // A queued autosave can still contain the category that was just deleted.
+    note.content = "Latest edit survives the category deletion race".into();
+    db.save_note(&note)?;
+    let latest = db.note(&note.id)?.expect("latest note");
+    assert_eq!(latest.category_id, None);
+    assert_eq!(latest.content, note.content);
     assert_eq!(db.list(Collection::Archive, "meeting")?.len(), 1);
     Ok(())
 }

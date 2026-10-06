@@ -1,7 +1,7 @@
 use crate::{
     app::AppState,
     models::*,
-    theme::{LIST_WIDTH, SIDEBAR_WIDTH, palette},
+    theme::{LIST_WIDTH, palette},
     ui::editor::{NoteEditor, note_menu},
 };
 use gpui_kit::component::{
@@ -154,7 +154,19 @@ impl AppWindow {
             "reopen_tab" => self.state.update(cx, |state, cx| state.reopen_tab(cx)),
             "next_tab" => self.state.update(cx, |state, cx| state.switch_tab(1, cx)),
             "previous_tab" => self.state.update(cx, |state, cx| state.switch_tab(-1, cx)),
-            "search" => self.search.update(cx, |input, cx| input.focus(window, cx)),
+            "search" => {
+                self.state.update(cx, |state, cx| {
+                    state.navigate(Collection::All, cx);
+                    state.session.sidebar_hidden = false;
+                    state.save_session(cx);
+                });
+                self.search.update(cx, |input, cx| input.focus(window, cx));
+            }
+            "toggle_sidebar" => self.state.update(cx, |state, cx| {
+                state.session.sidebar_hidden = !state.session.sidebar_hidden;
+                state.save_session(cx);
+                cx.notify();
+            }),
             "find" => {
                 if let Some(id) = self.state.read(cx).session.active.as_ref()
                     && let Some(editor) = self.editors.get(id)
@@ -262,90 +274,11 @@ impl AppWindow {
         }
     }
 
-    fn sidebar(&self, cx: &App) -> AnyElement {
-        let p = crate::theme::surfaces(&self.state.read(cx).settings, cx);
-        let active = self.state.read(cx).collection;
-        let mut sidebar = div()
-            .w(px(SIDEBAR_WIDTH))
-            .h_full()
-            .flex_shrink_0()
-            .v_flex()
-            .bg(p.sidebar)
-            .px_3()
-            .pt_5()
-            .pb_3()
-            .gap_1()
-            .border_r_1()
-            .border_color(p.line);
-        let state = self.state.clone();
-        sidebar = sidebar.child(
-            Button::new("new-note")
-                .primary()
-                .icon(IconName::Plus)
-                .label("New note")
-                .w_full()
-                .mb_5()
-                .on_click(move |_, _, cx| {
-                    state.update(cx, |state, cx| {
-                        state.create_note(false, cx);
-                    });
-                }),
-        );
-        for (collection, icon) in [
-            (Collection::All, IconName::Notebook),
-            (Collection::Pinned, IconName::Pin),
-            (Collection::Reminders, IconName::Bell),
-            (Collection::Archive, IconName::Archive),
-        ] {
-            let state = self.state.clone();
-            sidebar = sidebar.child(
-                Button::new(collection.label())
-                    .ghost()
-                    .icon(icon)
-                    .label(collection.label())
-                    .w_full()
-                    .justify_start()
-                    .when(active == collection, |button| {
-                        button.bg(p.selected).text_color(p.accent)
-                    })
-                    .on_click(move |_, _, cx| {
-                        state.update(cx, |state, cx| state.navigate(collection, cx))
-                    }),
-            );
-        }
-        let settings_state = self.state.clone();
-        sidebar
-            .child(div().flex_1())
-            .child(
-                Button::new("settings-navigation")
-                    .ghost()
-                    .icon(IconName::Settings)
-                    .label("Settings")
-                    .justify_start()
-                    .w_full()
-                    .on_click(move |_, _, cx| {
-                        settings_state.update(cx, |state, cx| {
-                            state.settings_page = Some("General".into());
-                            cx.notify();
-                        })
-                    }),
-            )
-            .child(
-                div()
-                    .px_3()
-                    .py_2()
-                    .text_xs()
-                    .text_color(p.muted)
-                    .child("Local only"),
-            )
-            .into_any_element()
-    }
-
-    fn note_list(&self, window: &Window, cx: &App) -> AnyElement {
+    fn note_list(&self, width: f32, window: &Window, cx: &App) -> AnyElement {
         let p = crate::theme::surfaces(&self.state.read(cx).settings, cx);
         let app = self.state.read(cx);
         let title = if app.query.is_empty() {
-            app.collection.label()
+            "Notes"
         } else {
             "Search results"
         };
@@ -407,27 +340,27 @@ impl AppWindow {
                                 div()
                                     .id(SharedString::from(format!("note-{}", note.id)))
                                     .v_flex()
-                                    .h(px(112.))
-                                    .gap_2()
+                                    .h(px(82.))
+                                    .gap_1()
                                     .px_3()
-                                    .py_3()
-                                    .mb_1()
-                                    .rounded(px(5.))
+                                    .py_2()
+                                    .rounded(px(4.))
                                     .cursor_pointer()
                                     .when(selected, |row| row.bg(p.selected))
                                     .hover(|row| row.bg(p.selected))
                                     .child(
                                         div()
-                                            .text_sm()
+                                            .text_size(px(13.))
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .truncate()
                                             .child(note.title.clone()),
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(13.))
+                                            .text_size(px(12.))
                                             .text_color(p.muted)
-                                            .max_h(px(37.))
+                                            .truncate()
+                                            .max_h(px(18.))
                                             .overflow_hidden()
                                             .child(preview),
                                     )
@@ -459,17 +392,18 @@ impl AppWindow {
             ));
         }
         div()
-            .w(px(LIST_WIDTH))
+            .w(px(width))
             .h_full()
             .flex_shrink_0()
+            .overflow_hidden()
             .v_flex()
             .border_r_1()
             .border_color(p.line)
-            .bg(p.canvas)
+            .bg(p.sidebar)
             .child(
                 div()
-                    .h(px(50.))
-                    .px_5()
+                    .h(px(38.))
+                    .px_4()
                     .flex()
                     .items_center()
                     .justify_between()
@@ -482,13 +416,47 @@ impl AppWindow {
                             .child(title),
                     )
                     .child(
-                        div()
-                            .text_xs()
-                            .text_color(p.muted)
-                            .child(app.summaries.len().to_string()),
+                        Button::new("new-sidebar-note")
+                            .ghost()
+                            .small()
+                            .icon(IconName::Plus)
+                            .tooltip("New note")
+                            .on_click({
+                                let state = self.state.clone();
+                                move |_, _, cx| {
+                                    state.update(cx, |state, cx| {
+                                        state.create_note(false, cx);
+                                    });
+                                }
+                            }),
                     ),
             )
             .child(list)
+            .child(
+                div()
+                    .h(px(38.))
+                    .flex_shrink_0()
+                    .border_t_1()
+                    .border_color(p.line)
+                    .flex()
+                    .items_center()
+                    .px_3()
+                    .child(
+                        Button::new("sidebar-settings")
+                            .ghost()
+                            .small()
+                            .icon(IconName::Settings)
+                            .label("Settings")
+                            .on_click({
+                                let state = self.state.clone();
+                                move |_, _, cx| {
+                                    state.update(cx, |state, cx| {
+                                        state.desktop_command("settings", cx)
+                                    })
+                                }
+                            }),
+                    ),
+            )
             .into_any_element()
     }
 
@@ -519,7 +487,7 @@ impl AppWindow {
         let app = self.state.read(cx);
         let mut tabs = div()
             .id("tabs")
-            .h(px(46.))
+            .h(px(38.))
             .w_full()
             .flex()
             .items_center()
@@ -672,14 +640,9 @@ impl Render for AppWindow {
                 .v_flex()
                 .items_center()
                 .justify_center()
-                .gap_4()
+                .gap_2()
                 .bg(p.paper)
-                .child(
-                    Icon::new(IconName::NotebookPen)
-                        .size_8()
-                        .text_color(p.muted),
-                )
-                .child(div().text_lg().child("A little room to think."))
+                .child(div().text_sm().text_color(p.muted).child("No note open"))
                 .child(
                     Button::new("first-note")
                         .primary()
@@ -701,37 +664,42 @@ impl Render for AppWindow {
             self.settings_view =
                 Some(cx.new(|cx| super::settings::SettingsView::new(state, window, cx)));
         }
+        let sidebar_width = gpui_kit::base::motion::spring(
+            "notes-sidebar-width",
+            if self.state.read(cx).session.sidebar_hidden {
+                0.
+            } else {
+                LIST_WIDTH
+            },
+            gpui_kit::base::motion::Spring::new(std::time::Duration::from_millis(200)),
+            window,
+            cx,
+        );
         let body = if settings_open {
             div()
                 .flex_1()
                 .min_h_0()
                 .flex()
-                .child(self.sidebar(cx))
                 .children(self.settings_view.clone())
                 .into_any_element()
-        } else if self.state.read(cx).collection == Collection::Reminders {
-            div()
-                .flex_1()
-                .min_h_0()
-                .flex()
-                .child(self.sidebar(cx))
-                .child(content)
-                .into_any_element()
         } else {
+            let editor = div()
+                .flex_1()
+                .min_w_0()
+                .v_flex()
+                .when(
+                    self.state.read(cx).collection != Collection::Reminders,
+                    |view| view.child(self.tabs(window, cx)),
+                )
+                .child(content);
             div()
                 .flex()
                 .flex_1()
                 .min_h_0()
-                .child(self.sidebar(cx))
-                .child(self.note_list(window, cx))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .v_flex()
-                        .child(self.tabs(window, cx))
-                        .child(content),
-                )
+                .when(sidebar_width > 0.5, |view| {
+                    view.child(self.note_list(sidebar_width, window, cx))
+                })
+                .child(editor)
                 .into_any_element()
         };
         let color = u32::from_str_radix(config.background_color.trim_start_matches('#'), 16)
@@ -783,22 +751,30 @@ impl Render for AppWindow {
                             .gap_3()
                             .child(
                                 div()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_size(px(13.))
-                                    .child("still"),
+                                    .occlude()
+                                    .child(super::categories::picker(self.state.clone(), cx)),
+                            )
+                            .child(
+                                div().occlude().child(
+                                    Button::new("toggle-sidebar")
+                                        .ghost()
+                                        .small()
+                                        .icon(IconName::PanelLeft)
+                                        .tooltip("Toggle notes sidebar")
+                                        .on_click(cx.listener(|view, _, window, cx| {
+                                            view.command("toggle_sidebar", window, cx)
+                                        })),
+                                ),
                             )
                             .child(div().flex_1())
                             .child(
-                                div()
-                                    .occlude()
-                                    .mr_3()
-                                    .child(
-                                        Input::new(&self.search)
-                                            .prefix(Icon::new(IconName::Search).size_3())
-                                            .w(px(228.))
-                                            .small()
-                                            .aria_label("Search notes"),
-                                    ),
+                                div().occlude().mr_3().child(
+                                    Input::new(&self.search)
+                                        .prefix(Icon::new(IconName::Search).size_3())
+                                        .w(px(228.))
+                                        .small()
+                                        .aria_label("Search notes"),
+                                ),
                             ),
                     ),
             )

@@ -23,6 +23,7 @@ pub struct AppState {
     pub collection: Collection,
     pub query: String,
     pub summaries: Vec<NoteSummary>,
+    pub categories: Vec<Category>,
     pub notes: HashMap<String, NoteBuffer>,
     pub reminders: Vec<Reminder>,
     pub closed_tabs: Vec<String>,
@@ -43,6 +44,7 @@ pub struct AppState {
     settings_task: Option<Task<()>>,
     session_task: Option<Task<()>>,
     deleting: HashSet<String>,
+    deleted_categories: HashSet<String>,
     debounce: HashMap<String, Task<()>>,
     message_task: Option<Task<()>>,
     list_generation: u64,
@@ -76,6 +78,7 @@ impl AppState {
             collection: Collection::All,
             query: String::new(),
             summaries: Vec::new(),
+            categories: Vec::new(),
             notes: HashMap::new(),
             reminders: Vec::new(),
             closed_tabs: Vec::new(),
@@ -96,6 +99,7 @@ impl AppState {
             settings_task: None,
             session_task: None,
             deleting: HashSet::new(),
+            deleted_categories: HashSet::new(),
             debounce: HashMap::new(),
             message_task: None,
             list_generation: 0,
@@ -105,6 +109,7 @@ impl AppState {
             state.load(&id, cx);
         }
         state.refresh(cx);
+        state.refresh_categories(cx);
         state.refresh_reminders(cx);
         state.prepare_background(cx);
         state
@@ -231,9 +236,11 @@ impl AppState {
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         self.list_generation += 1;
         let generation = self.list_generation;
-        let response = self
-            .store
-            .request(Request::List(self.collection, self.query.clone()));
+        let response = self.store.request(Request::CategoryList(
+            self.collection,
+            self.query.clone(),
+            self.session.category_id.clone(),
+        ));
         cx.spawn(async move |state, cx| {
             if let Ok(response) = response.recv().await {
                 let _ = state.update(cx, |state, cx| {
@@ -269,12 +276,149 @@ impl AppState {
         .detach();
     }
 
+    pub fn category_label(&self) -> &str {
+        self.session
+            .category_id
+            .as_ref()
+            .and_then(|id| self.categories.iter().find(|c| &c.id == id))
+            .map(|c| c.name.as_str())
+            .unwrap_or(self.collection.label())
+    }
+
+    pub fn refresh_categories(&mut self, cx: &mut Context<Self>) {
+        let response = self.store.request(Request::Categories);
+        cx.spawn(async move |state, cx| {
+            if let Ok(result) = response.recv().await {
+                let _ = state.update(cx, |state, cx| {
+                    match result {
+                        Ok(Response::Categories(categories)) => {
+                            state.categories = categories
+                                .into_iter()
+                                .filter(|c| !state.deleted_categories.contains(&c.id))
+                                .collect();
+                            if state
+                                .session
+                                .category_id
+                                .as_ref()
+                                .is_some_and(|id| !state.categories.iter().any(|c| &c.id == id))
+                            {
+                                state.session.category_id = None;
+                                state.refresh(cx);
+                                state.save_session(cx);
+                            }
+                        }
+                        Err(error) => state.fail(error, cx),
+                        _ => {}
+                    }
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    pub fn select_category(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.navigate(Collection::All, cx);
+        self.session.category_id = Some(id.into());
+        self.refresh(cx);
+        self.save_session(cx);
+    }
+
+    pub fn save_category(&mut self, id: String, name: String, cx: &mut Context<Self>) {
+        if self.deleted_categories.contains(&id) {
+            return;
+        }
+        let response = self.store.request(Request::SaveCategory(id.clone(), name));
+        cx.spawn(async move |state, cx| {
+            if let Ok(result) = response.recv().await {
+                let _ = state.update(cx, |state, cx| match result {
+                    Ok(_) => {
+                        state.session.category_id = Some(id);
+                        state.collection = Collection::All;
+                        state.refresh_categories(cx);
+                        state.refresh(cx);
+                        state.save_session(cx);
+                        cx.notify();
+                    }
+                    Err(error) => state.fail(error, cx),
+                });
+            }
+        })
+        .detach();
+    }
+
+    pub fn delete_category(&mut self, id: String, cx: &mut Context<Self>) {
+        let response = self.store.request(Request::DeleteCategory(id.clone()));
+        cx.spawn(async move |state, cx| {
+            if let Ok(result) = response.recv().await {
+                let _ = state.update(cx, |state, cx| match result {
+                    Ok(_) => {
+                        state.deleted_categories.insert(id.clone());
+                        state.categories.retain(|category| category.id != id);
+                        for buffer in state.notes.values_mut() {
+                            if buffer.note.category_id.as_ref() == Some(&id) {
+                                // SQLite already removed the association; preserve dirty text.
+                                buffer.note.category_id = None;
+                            }
+                        }
+                        if state.session.category_id.as_ref() == Some(&id) {
+                            state.navigate(Collection::All, cx);
+                        } else {
+                            state.refresh(cx);
+                        }
+                        state.toast("Category deleted", cx);
+                    }
+                    Err(error) => state.fail(error, cx),
+                });
+            }
+        })
+        .detach();
+    }
+
+    pub fn move_to_category(&mut self, id: &str, category: Option<String>, cx: &mut Context<Self>) {
+        if self.deleting.contains(id)
+            || category
+                .as_ref()
+                .is_some_and(|id| self.deleted_categories.contains(id))
+        {
+            return;
+        }
+        if let Some(buffer) = self.notes.get_mut(id) {
+            buffer.note.category_id = category;
+            buffer.revision += 1;
+            self.save_now(id, cx);
+            cx.notify();
+        } else {
+            let id = id.to_owned();
+            let response = self.store.request(Request::Load(id.clone()));
+            cx.spawn(async move |state, cx| {
+                if let Ok(Ok(Response::Note(Some(note)))) = response.recv().await {
+                    let _ = state.update(cx, |state, cx| {
+                        if state.deleting.contains(&id) {
+                            return;
+                        }
+                        state.notes.entry(id.clone()).or_insert(NoteBuffer {
+                            note,
+                            revision: 0,
+                            saved_revision: 0,
+                            save_failed: false,
+                        });
+                        state.move_to_category(&id, category, cx);
+                    });
+                }
+            })
+            .detach();
+        }
+    }
+
     pub fn navigate(&mut self, collection: Collection, cx: &mut Context<Self>) {
         self.collection = collection;
+        self.session.category_id = None;
         self.settings_page = None;
         self.shortcut_capture = None;
         self.query.clear();
         self.refresh(cx);
+        self.save_session(cx);
         cx.notify();
     }
 
@@ -297,7 +441,14 @@ impl AppState {
                         return;
                     }
                     match response {
-                        Ok(Response::Note(Some(note))) => {
+                        Ok(Response::Note(Some(mut note))) => {
+                            if note
+                                .category_id
+                                .as_ref()
+                                .is_some_and(|id| state.deleted_categories.contains(id))
+                            {
+                                note.category_id = None;
+                            }
                             state.notes.entry(note.id.clone()).or_insert(NoteBuffer {
                                 note,
                                 revision: 0,
@@ -341,7 +492,10 @@ impl AppState {
     }
 
     pub fn create_note(&mut self, floating: bool, cx: &mut Context<Self>) -> String {
-        let note = Note::new(self.settings.default_note_type.clone());
+        let mut note = Note::new(self.settings.default_note_type.clone());
+        if !floating {
+            note.category_id = self.session.category_id.clone();
+        }
         let id = note.id.clone();
         self.notes.insert(
             id.clone(),
@@ -496,7 +650,14 @@ impl AppState {
                 if let Ok(result) = response.recv().await {
                     let _ = state.update(cx, |state, cx| match result {
                         _ if state.deleting.contains(&id) => {}
-                        Ok(Response::Note(Some(note))) => {
+                        Ok(Response::Note(Some(mut note))) => {
+                            if note
+                                .category_id
+                                .as_ref()
+                                .is_some_and(|id| state.deleted_categories.contains(id))
+                            {
+                                note.category_id = None;
+                            }
                             state.notes.insert(
                                 id.clone(),
                                 NoteBuffer {

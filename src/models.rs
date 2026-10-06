@@ -172,6 +172,8 @@ pub struct Session {
     pub x: Option<f32>,
     pub y: Option<f32>,
     pub maximized: bool,
+    pub category_id: Option<String>,
+    pub sidebar_hidden: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -253,6 +255,7 @@ pub fn default_shortcuts() -> std::collections::BTreeMap<String, String> {
         ("reopen_tab", "ctrl-shift-t"),
         ("next_tab", "ctrl-tab"),
         ("previous_tab", "ctrl-shift-tab"),
+        ("toggle_sidebar", "ctrl-b"),
         ("find", "ctrl-f"),
         ("search", "ctrl-shift-f"),
         ("reminder", "ctrl-r"),

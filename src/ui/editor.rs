@@ -170,6 +170,15 @@ pub fn note_menu(mut menu: PopupMenu, state: Entity<AppState>, id: String, cx: &
             }
         }));
     }
+    let move_state = state.clone();
+    let move_id = id.clone();
+    menu = menu
+        .separator()
+        .item(
+            PopupMenuItem::new("Move to category…").on_click(move |_, window, cx| {
+                super::categories::move_note(move_state.clone(), move_id.clone(), window, cx);
+            }),
+        );
     menu.separator().item(
         PopupMenuItem::new("Delete permanently")
             .on_click(move |_, window, cx| confirm_delete(state.clone(), id.clone(), window, cx)),

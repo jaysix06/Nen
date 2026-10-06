@@ -6,45 +6,19 @@ A local-first Windows notes app built with Rust, GPUI and SQLite.
 
 Write it. Keep it accessible. Get reminded. Move on.
 
-## Run
-
-Download the Windows x64 portable ZIP from
-[the latest release](https://github.com/jaysix06/Nen/releases/latest), extract it
-and open `Nen.exe`. For a local build, open `dist/Nen.exe`.
-No account or internet connection is required to use your notes.
-Windows needs the Microsoft Visual C++ x64 runtime (`VCRUNTIME140.dll`),
-which is already installed on this development machine.
-Closing the window keeps Nen in the tray by default. Use **Quit** in the
-tray menu to exit, or change **Settings → General → Close to tray**.
-Reminders work while the process is running, including in the tray. Missed
-reminders are handled when Nen opens or Windows resumes.
-
 ## Features
 
 - Debounced background autosave, local SQLite storage and recoverable archive.
-- Blank drafts are discarded quietly when their tab closes. Notes with a title,
-  content, pin or reminder are kept.
 - Compact tabs with reorder, middle-click close, reopen and session restoration.
-- Integrated native window controls and drag regions, with actual notes in the sidebar.
 - A compact category picker for Personal, Work, Ideas, pinned notes, reminders
-  and archive above the note list. Create, rename and remove categories;
-  removing one keeps its notes.
+  and archive above the note list.
 - Plain text and Markdown writing, undo/redo, find and a formatted reading view.
 - Pinned notes and indexed local search, with title matches ranked first.
 - Note reminders with quick presets, daily/weekly/monthly/custom-day recurrence,
   snooze, completion and native Windows notification actions.
 - One floating quick-access window that expands between search, results,
   editing and inline reminders, sharing the main app's notes.
-- Configurable app and global shortcuts, conflict detection and registration rollback.
-- Dark by default, a bundled local lake wallpaper, four restrained accent colors,
-  Light/Dark/System themes, editor sizing, local image backgrounds, fit, blur,
-  dim, saturation and opacity controls, plus Opaque/Frosted/Clear surfaces.
-- Tray access, optional startup registration, floating placement and opacity,
-  focus-loss hiding, position memory and reduced-motion support.
-- A background update check on launch, with an update banner above Settings.
-  Clicking it downloads the new version, saves your notes and preferences,
-  installs it and reopens Nen. Failed downloads leave Nen running for retry.
-
+  
 The editor stores Markdown as text. Remote images are not loaded by the reading
 view. Links open in the default application only when clicked. Frosted surfaces
 use a cached, locally blurred background; they do not continuously blur other
@@ -71,16 +45,6 @@ Background transformations are cached between launches.
 | Toggle floating bar, globally | Ctrl+Shift+Space |
 | Quick note, globally | Ctrl+Alt+Space |
 | Open full app, globally | Ctrl+Alt+N |
-
-Use Up/Down and Enter in search to open results. Escape backs out through the
-floating states, then hides the compact bar. Shortcuts are editable under
-**Settings → Shortcuts**.
-Category numbers follow the dropdown order, including All Notes, Pinned,
-your categories, Reminders and Archive. Numbers without an entry do nothing.
-Ctrl+, opens settings; pressing it again returns to the editor. Preferences use
-left-aligned groups and locally embedded Phosphor icons. Plus, close and window
-controls use Regular artwork; other application icons use Fill. The editor font
-slider includes a live preview and applies to open notes immediately.
 
 ## Build requirements
 
@@ -119,8 +83,6 @@ the same tool on PATH or through the Windows SDK installation.
 
 Application data is stored under `%LOCALAPPDATA%\Nen\Nen\data`:
 `notes.sqlite`, its SQLite journal files, managed backgrounds and bounded logs.
-Existing installations continue using `%LOCALAPPDATA%\Still\Still\data`
-so notes, settings, reminders and image paths remain intact.
 The app registers its own Windows notification identity and COM activator under
 the current user's registry. Startup registration is optional. It does not
 change Windows notification preferences.

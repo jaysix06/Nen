@@ -31,6 +31,7 @@ pub struct FloatingWindow {
     selected: usize,
     anchor: (i32, i32, i32, i32),
     last_size: (i32, i32),
+    dragging: bool,
     position_override: Option<(i32, i32)>,
     _subscriptions: Vec<Subscription>,
 }
@@ -44,6 +45,36 @@ impl FloatingWindow {
         self.last_size = (0, 0);
         self.position_override = None;
         cx.notify();
+    }
+    fn start_drag(&mut self, window: &Window, cx: &mut Context<Self>) {
+        if self.dragging {
+            return;
+        }
+        self.dragging = true;
+        let drag = platform::drag_floating(window, cx);
+        cx.spawn(async move |view, cx| {
+            let position = drag.await;
+            let _ = view.update(cx, |view, cx| {
+                view.dragging = false;
+                if let Some((x, y)) = position {
+                    view.anchor = platform::work_area();
+                    view.last_size = (0, 0);
+                    if view.state.read(cx).settings.floating_remember_position {
+                        view.state.update(cx, |state, cx| {
+                            let mut settings = state.settings.clone();
+                            settings.floating_x = Some(x);
+                            settings.floating_y = Some(y);
+                            settings.floating_position = "Custom".into();
+                            state.update_settings(settings, cx);
+                        });
+                    } else {
+                        view.position_override = Some((x, y));
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
     pub fn new(state: Entity<AppState>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input = cx.new(|cx| InputState::new(window, cx).placeholder("Search or write..."));
@@ -59,6 +90,7 @@ impl FloatingWindow {
             selected: 0,
             anchor: platform::work_area(),
             last_size: (0, 0),
+            dragging: false,
             position_override: None,
             _subscriptions: Vec::new(),
         };
@@ -74,6 +106,8 @@ impl FloatingWindow {
         view._subscriptions
             .push(cx.observe_window_activation(window, |view, window, cx| {
                 if window.is_window_active() {
+                    view.last_size = (0, 0);
+                    cx.notify();
                     if view.state.read(cx).floating_note.is_none() {
                         view.input.update(cx, |input, cx| input.focus(window, cx));
                     } else if view.state.read(cx).floating_reminder {
@@ -302,7 +336,7 @@ impl Render for FloatingWindow {
         let width = spring("island-width", target_width, motion, window, cx);
         let height = spring("island-height", target_height, motion, window, cx);
         let size = (width.round() as i32, height.round() as i32);
-        if self.last_size != size {
+        if !self.dragging && self.last_size != size {
             platform::position_floating(window, width, height, &settings, self.anchor, cx);
             self.last_size = size;
         }
@@ -346,24 +380,7 @@ impl Render for FloatingWindow {
                             .child(if reminder { "Reminder" } else { "Quick note" })
                             .on_mouse_down(
                                 MouseButton::Left,
-                                cx.listener(|view, _, window, cx| {
-                                    if let Some((x, y)) = platform::drag_floating(window) {
-                                        view.anchor = platform::work_area();
-                                        view.last_size = (0, 0);
-                                        if view.state.read(cx).settings.floating_remember_position {
-                                            view.state.update(cx, |state, cx| {
-                                                let mut settings = state.settings.clone();
-                                                settings.floating_x = Some(x);
-                                                settings.floating_y = Some(y);
-                                                settings.floating_position = "Custom".into();
-                                                state.update_settings(settings, cx);
-                                            });
-                                        } else {
-                                            view.position_override = Some((x, y));
-                                            cx.notify();
-                                        }
-                                    }
-                                }),
+                                cx.listener(|view, _, window, cx| view.start_drag(window, cx)),
                             ),
                     )
                     .child(
@@ -444,9 +461,19 @@ impl Render for FloatingWindow {
                     .px_3()
                     .gap_2()
                     .child(
-                        Icon::new(IconName::NotebookPen)
-                            .size_5()
-                            .text_color(p.accent),
+                        div()
+                            .id("island-drag-compact")
+                            .cursor_move()
+                            .py_2()
+                            .child(
+                                Icon::new(IconName::NotebookPen)
+                                    .size_5()
+                                    .text_color(p.accent),
+                            )
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|view, _, window, cx| view.start_drag(window, cx)),
+                            ),
                     )
                     .child(
                         Input::new(&self.input)
@@ -607,6 +634,7 @@ pub fn show(state: Entity<AppState>, visible: bool, cx: &mut App) {
     let settings = state.read(cx).settings.clone();
     let anchor = platform::work_area();
     let options = WindowOptions {
+        show: false,
         titlebar: None,
         kind: WindowKind::PopUp,
         window_bounds: Some(WindowBounds::Windowed(Bounds::new(
@@ -629,7 +657,7 @@ pub fn show(state: Entity<AppState>, visible: bool, cx: &mut App) {
                 cx.notify();
             });
             let _ = handle.update(cx, |_, window, cx| {
-                platform::floating_style(window, &settings);
+                platform::floating_style(window, &settings, cx);
                 platform::show(window, cx);
             });
         }

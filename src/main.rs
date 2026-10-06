@@ -63,6 +63,9 @@ fn run() -> anyhow::Result<()> {
             }
             let state = cx.new(|cx| AppState::new(store, settings, session, cx));
             let options = WindowOptions {
+                // Present only after GPUI finishes creating the view. Windows
+                // can synchronously request a frame while showing a window.
+                show: false,
                 window_bounds: Some(if state.read(cx).session.maximized {
                     WindowBounds::Maximized(bounds)
                 } else {
@@ -168,7 +171,10 @@ fn run() -> anyhow::Result<()> {
             match still::platform::Desktop::new(&config) {
                 Ok((desktop, platform_events, warnings)) => {
                     if let Some(handle) = state.read(cx).main_window {
-                        let _ = handle.update(cx, |_, window, _| desktop.attach(window));
+                        let result = handle.update(cx, |_, window, _| desktop.attach(window));
+                        if let Ok(Err(error)) = result {
+                            state.update(cx, |state, cx| state.fail(error.to_string(), cx));
+                        }
                     }
                     state.update(cx, |state, cx| {
                         state.desktop = Some(desktop);

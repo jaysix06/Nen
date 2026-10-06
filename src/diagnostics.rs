@@ -17,9 +17,11 @@ impl log::Log for FileLogger {
         {
             let _ = writeln!(
                 file,
-                "{} {} {}",
+                "{} {} {}:{} {}",
                 chrono::Utc::now().to_rfc3339(),
                 record.level(),
+                record.target(),
+                record.line().unwrap_or(0),
                 record.args()
             );
         }

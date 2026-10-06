@@ -341,6 +341,9 @@ pub fn hide(window: &Window, cx: &gpui_kit::App) {
     }
 }
 pub fn show(window: &mut Window, cx: &gpui_kit::App) {
+    // GPUI applies its initial placement on first activation. Do that before
+    // our visibility request so it cannot overwrite a freshly resized island.
+    window.activate_window();
     if let Some(hwnd) = hwnd(window) {
         cx.foreground_executor()
             .spawn(async move {
@@ -351,50 +354,59 @@ pub fn show(window: &mut Window, cx: &gpui_kit::App) {
             })
             .detach();
     }
-    window.activate_window();
 }
-pub fn floating_style(window: &Window, settings: &Settings) {
+pub fn floating_style(window: &Window, settings: &Settings, cx: &gpui_kit::App) {
     if let Some(hwnd) = hwnd(window) {
-        unsafe {
-            let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-            let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style | WS_EX_TOOLWINDOW.0 as isize);
-            let _ = SetWindowPos(
-                hwnd,
-                Some(if settings.floating_topmost {
-                    HWND_TOPMOST
-                } else {
-                    HWND_NOTOPMOST
-                }),
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-            );
-            if settings.floating_opacity < 0.999 {
-                let _ = SetWindowLongPtrW(
-                    hwnd,
-                    GWL_EXSTYLE,
-                    style | WS_EX_TOOLWINDOW.0 as isize | WS_EX_LAYERED.0 as isize,
-                );
-                let _ = SetLayeredWindowAttributes(
-                    hwnd,
-                    COLORREF(0),
-                    (settings.floating_opacity.clamp(0.6, 1.) * 255.) as u8,
-                    LWA_ALPHA,
-                );
-            } else {
-                let current = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-                let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, current & !(WS_EX_LAYERED.0 as isize));
-            }
-            let radius = 2i32;
-            let _ = DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_WINDOW_CORNER_PREFERENCE,
-                &radius as *const _ as *const c_void,
-                4,
-            );
-        }
+        let settings = settings.clone();
+        cx.foreground_executor()
+            .spawn(async move {
+                unsafe {
+                    let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                    let _ =
+                        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style | WS_EX_TOOLWINDOW.0 as isize);
+                    let _ = SetWindowPos(
+                        hwnd,
+                        Some(if settings.floating_topmost {
+                            HWND_TOPMOST
+                        } else {
+                            HWND_NOTOPMOST
+                        }),
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                    );
+                    if settings.floating_opacity < 0.999 {
+                        let _ = SetWindowLongPtrW(
+                            hwnd,
+                            GWL_EXSTYLE,
+                            style | WS_EX_TOOLWINDOW.0 as isize | WS_EX_LAYERED.0 as isize,
+                        );
+                        let _ = SetLayeredWindowAttributes(
+                            hwnd,
+                            COLORREF(0),
+                            (settings.floating_opacity.clamp(0.6, 1.) * 255.) as u8,
+                            LWA_ALPHA,
+                        );
+                    } else {
+                        let current = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                        let _ = SetWindowLongPtrW(
+                            hwnd,
+                            GWL_EXSTYLE,
+                            current & !(WS_EX_LAYERED.0 as isize),
+                        );
+                    }
+                    let radius = 2i32;
+                    let _ = DwmSetWindowAttribute(
+                        hwnd,
+                        DWMWA_WINDOW_CORNER_PREFERENCE,
+                        &radius as *const _ as *const c_void,
+                        4,
+                    );
+                }
+            })
+            .detach();
     }
 }
 pub fn work_area() -> (i32, i32, i32, i32) {
@@ -523,23 +535,28 @@ unsafe extern "system" fn window_messages(
     }
     unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
 }
-pub fn drag_floating(window: &Window) -> Option<(i32, i32)> {
-    let hwnd = hwnd(window)?;
-    unsafe {
-        let _ = ReleaseCapture();
-        let mut cursor = POINT::default();
-        let _ = GetCursorPos(&mut cursor);
-        let position = ((cursor.y as u32 & 0xffff) << 16) | (cursor.x as u32 & 0xffff);
-        let _ = SendMessageW(
-            hwnd,
-            WM_NCLBUTTONDOWN,
-            Some(WPARAM(HTCAPTION as usize)),
-            Some(LPARAM(position as isize)),
-        );
-        let mut rect = RECT::default();
-        GetWindowRect(hwnd, &mut rect).ok()?;
-        Some((rect.left, rect.top))
-    }
+pub fn drag_floating(window: &Window, cx: &gpui_kit::App) -> gpui_kit::Task<Option<(i32, i32)>> {
+    let hwnd = hwnd(window);
+    // The native move loop dispatches frames and input synchronously. Keep
+    // the App and view unborrowed throughout that loop.
+    cx.foreground_executor().spawn(async move {
+        let hwnd = hwnd?;
+        unsafe {
+            let _ = ReleaseCapture();
+            let mut cursor = POINT::default();
+            let _ = GetCursorPos(&mut cursor);
+            let position = ((cursor.y as u32 & 0xffff) << 16) | (cursor.x as u32 & 0xffff);
+            let _ = SendMessageW(
+                hwnd,
+                WM_NCLBUTTONDOWN,
+                Some(WPARAM(HTCAPTION as usize)),
+                Some(LPARAM(position as isize)),
+            );
+            let mut rect = RECT::default();
+            GetWindowRect(hwnd, &mut rect).ok()?;
+            Some((rect.left, rect.top))
+        }
+    })
 }
 
 pub struct Instance(HANDLE);

@@ -7,6 +7,8 @@ Write it. Keep it accessible. Get reminded. Move on.
 ## Run
 
 Open `dist/Still.exe`. No account or internet connection is required.
+Windows needs the Microsoft Visual C++ x64 runtime (`VCRUNTIME140.dll`),
+which is already installed on this development machine.
 Closing the window keeps Still in the tray by default. Use **Quit** in the
 tray menu to exit, or change **Settings → General → Close to tray**.
 Reminders work while the process is running, including in the tray. Missed

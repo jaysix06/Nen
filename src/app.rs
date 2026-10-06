@@ -167,8 +167,8 @@ impl AppState {
         if let Some(handle) = self.floating_window {
             let settings = self.settings.clone();
             cx.defer(move |cx| {
-                let _ = handle.update(cx, |_, window, _| {
-                    crate::platform::floating_style(window, &settings)
+                let _ = handle.update(cx, |_, window, cx| {
+                    crate::platform::floating_style(window, &settings, cx)
                 });
             });
         }

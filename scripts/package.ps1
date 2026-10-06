@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 & (Join-Path $PSScriptRoot 'cargo.ps1') -CargoArgs @('build','--release','--locked')
 if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
+& (Join-Path $PSScriptRoot 'stop-development.ps1') -IncludePackaged
 $destination = Join-Path $projectRoot 'dist'
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectRoot 'target/release/still.exe') -Destination (Join-Path $destination 'Still.exe')

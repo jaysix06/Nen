@@ -108,6 +108,7 @@ fn reminder_completion_is_atomic_and_idempotent() -> anyhow::Result<()> {
         status: "pending".into(),
         title: String::new(),
         preview: String::new(),
+        series_id: None,
     };
     db.add_reminder(&reminder)?;
     assert_eq!(db.due(now)?.len(), 1);
@@ -162,6 +163,7 @@ fn recurring_delivery_continues_without_completion_and_snooze_does_not_duplicate
         status: "pending".into(),
         title: String::new(),
         preview: String::new(),
+        series_id: None,
     };
     db.add_reminder(&reminder)?;
     db.mark_notified(&reminder.id)?;
@@ -170,5 +172,104 @@ fn recurring_delivery_continues_without_completion_and_snooze_does_not_duplicate
     db.snooze(&reminder.id, 10)?;
     db.complete_reminder(&reminder.id, Utc::now().timestamp())?;
     assert_eq!(db.reminders()?.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn monthly_recurrence_keeps_its_original_day() {
+    use chrono::{Datelike, Local, TimeZone};
+    let january = Local
+        .with_ymd_and_hms(2027, 1, 31, 9, 0, 0)
+        .single()
+        .expect("January")
+        .timestamp();
+    let february = Recurrence::MonthlyOn(31)
+        .next_after(january, january)
+        .expect("February");
+    let march = Recurrence::MonthlyOn(31)
+        .next_after(february, february)
+        .expect("March");
+    assert_eq!(
+        chrono::DateTime::from_timestamp(february, 0)
+            .expect("date")
+            .with_timezone(&Local)
+            .day(),
+        28
+    );
+    assert_eq!(
+        chrono::DateTime::from_timestamp(march, 0)
+            .expect("date")
+            .with_timezone(&Local)
+            .day(),
+        31
+    );
+}
+
+#[test]
+fn indexed_search_handles_unicode_edits_and_deletion() -> anyhow::Result<()> {
+    let db = Database::open(Path::new(":memory:"))?;
+    let mut note = Note::new(NoteType::Normal);
+    note.title = "CAFÉ on the corner".into();
+    note.content = "Meet Élise on Friday".into();
+    db.save_note(&note)?;
+    assert_eq!(db.list(Collection::All, "café")?.len(), 1);
+    assert_eq!(db.list(Collection::All, "élise")?.len(), 1);
+    assert_eq!(db.list(Collection::All, "É")?.len(), 1);
+    note.content = "Meet Anna on Monday".into();
+    db.save_note(&note)?;
+    assert!(db.list(Collection::All, "élise")?.is_empty());
+    assert_eq!(db.list(Collection::All, "Anna")?.len(), 1);
+    db.delete(&note.id)?;
+    assert!(db.list(Collection::All, "café")?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn upgrading_a_v1_database_backfills_search_without_changing_notes() -> anyhow::Result<()> {
+    let path =
+        std::env::temp_dir().join(format!("still-migration-{}.sqlite", uuid::Uuid::new_v4()));
+    {
+        let connection = rusqlite::Connection::open(&path)?;
+        connection.execute_batch(include_str!("../src/storage/schema.sql"))?;
+        connection.pragma_update(None, "user_version", 1)?;
+        connection.execute("INSERT INTO notes(id,title,content,created_at,updated_at) VALUES('original','Supplier','Private original content',1,1)",[])?;
+    }
+    {
+        let db = Database::open(&path)?;
+        assert_eq!(
+            db.note("original")?.expect("original note").content,
+            "Private original content"
+        );
+        assert_eq!(db.list(Collection::All, "supplier")?.len(), 1);
+    }
+    std::fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn cancelling_a_repeating_reminder_stops_the_series_and_keeps_the_note() -> anyhow::Result<()> {
+    let mut db = Database::open(Path::new(":memory:"))?;
+    let note = Note::new(NoteType::Normal);
+    db.save_note(&note)?;
+    let reminder = Reminder {
+        id: uuid::Uuid::new_v4().to_string(),
+        note_id: note.id.clone(),
+        scheduled_at: Utc::now().timestamp() - 1,
+        recurrence: Recurrence::Daily,
+        status: "pending".into(),
+        title: String::new(),
+        preview: String::new(),
+        series_id: None,
+    };
+    db.add_reminder(&reminder)?;
+    db.mark_notified(&reminder.id)?;
+    let pending = db
+        .reminders()?
+        .into_iter()
+        .find(|r| r.status == "pending")
+        .expect("next occurrence");
+    db.remove_reminder(&pending.id)?;
+    assert!(db.reminders()?.is_empty());
+    assert!(db.note(&note.id)?.is_some());
     Ok(())
 }

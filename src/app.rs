@@ -3,13 +3,17 @@ use crate::{
     storage::{Request, Response, Store},
 };
 use gpui_kit::*;
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 
 #[derive(Clone)]
 pub struct NoteBuffer {
     pub note: Note,
     pub revision: u64,
     pub saved_revision: u64,
+    pub save_failed: bool,
 }
 
 pub struct AppState {
@@ -31,6 +35,14 @@ pub struct AppState {
     pub focus_title: Option<String>,
     pub main_window: Option<AnyWindowHandle>,
     pub floating_window: Option<AnyWindowHandle>,
+    pub floating_view: Option<Entity<crate::ui::floating::FloatingWindow>>,
+    pub desktop: Option<crate::platform::Desktop>,
+    pub shortcut_capture: Option<String>,
+    pub background: Option<std::path::PathBuf>,
+    background_task: Option<Task<()>>,
+    settings_task: Option<Task<()>>,
+    session_task: Option<Task<()>>,
+    deleting: HashSet<String>,
     debounce: HashMap<String, Task<()>>,
     message_task: Option<Task<()>>,
     list_generation: u64,
@@ -40,10 +52,18 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         store: Store,
-        settings: Settings,
+        mut settings: Settings,
         mut session: Session,
         cx: &mut Context<Self>,
     ) -> Self {
+        for (action, binding) in default_shortcuts() {
+            if !settings.shortcuts.contains_key(&action) {
+                let available = !settings.shortcuts.values().any(|value| value == &binding);
+                settings
+                    .shortcuts
+                    .insert(action, if available { binding } else { String::new() });
+            }
+        }
         if !settings.restore_tabs {
             session.tabs.clear();
             session.active = None;
@@ -68,6 +88,14 @@ impl AppState {
             focus_title: None,
             main_window: None,
             floating_window: None,
+            floating_view: None,
+            desktop: None,
+            shortcut_capture: None,
+            background: None,
+            background_task: None,
+            settings_task: None,
+            session_task: None,
+            deleting: HashSet::new(),
             debounce: HashMap::new(),
             message_task: None,
             list_generation: 0,
@@ -78,6 +106,7 @@ impl AppState {
         }
         state.refresh(cx);
         state.refresh_reminders(cx);
+        state.prepare_background(cx);
         state
     }
 
@@ -86,6 +115,117 @@ impl AppState {
             .active
             .as_ref()
             .and_then(|id| self.notes.get(id))
+    }
+
+    pub fn desktop_command(&mut self, command: &str, cx: &mut Context<Self>) {
+        match command {
+            "quit" => self.quit(cx),
+            "toggle_float" => {
+                let entity = cx.entity();
+                let show = !self.floating_visible;
+                cx.defer(move |cx| crate::ui::floating::show(entity, show, cx));
+            }
+            "show_float" => {
+                let entity = cx.entity();
+                cx.defer(move |cx| crate::ui::floating::show(entity, true, cx));
+            }
+            "quick_note" => {
+                self.create_note(true, cx);
+                let entity = cx.entity();
+                cx.defer(move |cx| crate::ui::floating::show(entity, true, cx));
+            }
+            "settings" | "open_app" => {
+                if command == "settings" {
+                    self.settings_page = Some("General".into());
+                }
+                if let Some(handle) = self.main_window {
+                    cx.defer(move |cx| {
+                        let _ =
+                            handle.update(cx, |_, window, cx| crate::platform::show(window, cx));
+                    });
+                }
+                cx.notify();
+            }
+            _ => {}
+        }
+    }
+
+    pub fn update_settings(&mut self, settings: Settings, cx: &mut Context<Self>) {
+        let appearance_changed = self.settings.theme != settings.theme
+            || self.settings.reduced_motion != settings.reduced_motion;
+        let background_changed = self.settings.background_image != settings.background_image
+            || self.settings.background_blur != settings.background_blur
+            || self.settings.background_saturation != settings.background_saturation
+            || self.settings.surface != settings.surface;
+        self.settings = settings;
+        if appearance_changed {
+            crate::theme::apply(&self.settings, cx);
+        }
+        if background_changed {
+            self.prepare_background(cx);
+        }
+        if let Some(handle) = self.floating_window {
+            let settings = self.settings.clone();
+            cx.defer(move |cx| {
+                let _ = handle.update(cx, |_, window, _| {
+                    crate::platform::floating_style(window, &settings)
+                });
+            });
+        }
+        if let Some(view) = self.floating_view.clone() {
+            cx.defer(move |cx| view.update(cx, |view, cx| view.invalidate_size(cx)));
+        }
+        self.settings_task = Some(cx.spawn(async move |state, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(250))
+                .await;
+            let response = state.update(cx, |state, _| {
+                state
+                    .store
+                    .request(Request::Settings(state.settings.clone()))
+            });
+            if let Ok(response) = response
+                && let Ok(Err(error)) = response.recv().await
+            {
+                let _ = state.update(cx, |state, cx| state.fail(error, cx));
+            }
+        }));
+        cx.notify();
+    }
+
+    pub fn prepare_background(&mut self, cx: &mut Context<Self>) {
+        let settings = self.settings.clone();
+        self.background_task = Some(cx.spawn(async move |state, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(250))
+                .await;
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    crate::diagnostics::data_directory()
+                        .and_then(|directory| crate::background::prepare(&settings, &directory))
+                })
+                .await;
+            let _ = state.update(cx, |state, cx| {
+                match result {
+                    Ok(path) => {
+                        let previous = state.background.take();
+                        state.background = path;
+                        if let Some(previous) = previous {
+                            // Release decoded pixels when a new background replaces this asset.
+                            ImageSource::from(previous.clone()).remove_asset(cx);
+                            cx.background_executor()
+                                .spawn(async move {
+                                    let _ = std::fs::remove_file(previous);
+                                })
+                                .detach();
+                        }
+                    }
+                    Err(error) => state.fail(format!("Couldn't load the background: {error}"), cx),
+                }
+                cx.notify();
+            });
+        }));
     }
 
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
@@ -132,6 +272,8 @@ impl AppState {
     pub fn navigate(&mut self, collection: Collection, cx: &mut Context<Self>) {
         self.collection = collection;
         self.settings_page = None;
+        self.shortcut_capture = None;
+        self.query.clear();
         self.refresh(cx);
         cx.notify();
     }
@@ -143,7 +285,7 @@ impl AppState {
     }
 
     pub fn load(&mut self, id: &str, cx: &mut Context<Self>) {
-        if self.notes.contains_key(id) {
+        if self.notes.contains_key(id) || self.deleting.contains(id) {
             return;
         }
         let id = id.to_owned();
@@ -151,12 +293,16 @@ impl AppState {
         cx.spawn(async move |state, cx| {
             if let Ok(response) = response.recv().await {
                 let _ = state.update(cx, |state, cx| {
+                    if state.deleting.contains(&id) {
+                        return;
+                    }
                     match response {
                         Ok(Response::Note(Some(note))) => {
                             state.notes.entry(note.id.clone()).or_insert(NoteBuffer {
                                 note,
                                 revision: 0,
                                 saved_revision: 0,
+                                save_failed: false,
                             });
                         }
                         Ok(Response::Note(None)) => {
@@ -176,18 +322,26 @@ impl AppState {
     }
 
     pub fn open_note(&mut self, id: &str, cx: &mut Context<Self>) {
+        if self.deleting.contains(id) {
+            return;
+        }
         self.settings_page = None;
+        self.shortcut_capture = None;
+        if self.collection == Collection::Reminders {
+            self.collection = Collection::All;
+            self.refresh(cx);
+        }
         if !self.session.tabs.iter().any(|tab| tab == id) {
             self.session.tabs.push(id.into());
         }
         self.session.active = Some(id.into());
         self.load(id, cx);
-        self.save_session();
+        self.save_session(cx);
         cx.notify();
     }
 
     pub fn create_note(&mut self, floating: bool, cx: &mut Context<Self>) -> String {
-        let note = Note::new(NoteType::Normal);
+        let note = Note::new(self.settings.default_note_type.clone());
         let id = note.id.clone();
         self.notes.insert(
             id.clone(),
@@ -195,6 +349,7 @@ impl AppState {
                 note,
                 revision: 1,
                 saved_revision: 0,
+                save_failed: false,
             },
         );
         self.collection = Collection::All;
@@ -209,6 +364,9 @@ impl AppState {
     }
 
     pub fn edit(&mut self, id: &str, title: String, content: String, cx: &mut Context<Self>) {
+        if self.deleting.contains(id) {
+            return;
+        }
         if let Some(buffer) = self.notes.get_mut(id) {
             if buffer.note.title == title && buffer.note.content == content {
                 return;
@@ -236,6 +394,9 @@ impl AppState {
     }
 
     pub fn save_now(&mut self, id: &str, cx: &mut Context<Self>) {
+        if self.deleting.contains(id) {
+            return;
+        }
         let Some(buffer) = self.notes.get(id) else {
             return;
         };
@@ -246,20 +407,29 @@ impl AppState {
         let id = id.to_owned();
         let response = self.store.request(Request::Save(buffer.note.clone()));
         cx.spawn(async move |state, cx| {
-            if let Ok(response) = response.recv().await {
-                let _ = state.update(cx, |state, cx| {
-                    match response {
-                        Ok(_) => {
-                            if let Some(buffer) = state.notes.get_mut(&id) {
-                                buffer.saved_revision = buffer.saved_revision.max(revision);
-                            }
-                            state.refresh(cx);
+            let response = response
+                .recv()
+                .await
+                .unwrap_or_else(|_| Err("Storage is unavailable.".into()));
+            let _ = state.update(cx, |state, cx| {
+                match response {
+                    Ok(_) => {
+                        if let Some(buffer) = state.notes.get_mut(&id) {
+                            buffer.saved_revision = buffer.saved_revision.max(revision);
+                            buffer.save_failed = false;
                         }
-                        Err(error) => state.fail(format!("Couldn't save this note. {error}"), cx),
+                        state.prune_cache();
+                        state.refresh(cx);
                     }
-                    cx.notify();
-                });
-            }
+                    Err(error) => {
+                        if let Some(buffer) = state.notes.get_mut(&id) {
+                            buffer.save_failed = true;
+                        }
+                        state.fail(format!("Couldn't save this note. {error}"), cx);
+                    }
+                }
+                cx.notify();
+            });
         })
         .detach();
     }
@@ -280,7 +450,7 @@ impl AppState {
                     .cloned();
             }
         }
-        self.save_session();
+        self.save_session(cx);
         cx.notify();
     }
 
@@ -316,12 +486,16 @@ impl AppState {
     }
 
     pub fn note_action(&mut self, id: &str, action: &'static str, cx: &mut Context<Self>) {
+        if self.deleting.contains(id) {
+            return;
+        }
         if !self.notes.contains_key(id) {
             let id = id.to_owned();
             let response = self.store.request(Request::Load(id.clone()));
             cx.spawn(async move |state, cx| {
                 if let Ok(result) = response.recv().await {
                     let _ = state.update(cx, |state, cx| match result {
+                        _ if state.deleting.contains(&id) => {}
                         Ok(Response::Note(Some(note))) => {
                             state.notes.insert(
                                 id.clone(),
@@ -329,6 +503,7 @@ impl AppState {
                                     note,
                                     revision: 0,
                                     saved_revision: 0,
+                                    save_failed: false,
                                 },
                             );
                             state.note_action(&id, action, cx);
@@ -350,6 +525,18 @@ impl AppState {
             "pin" => self.toggle_pin(id, cx),
             "archive" => self.archive(id, cx),
             "duplicate" => self.duplicate(id, cx),
+            "normal" | "scratch" => {
+                if let Some(buffer) = self.notes.get_mut(id) {
+                    buffer.note.note_type = if action == "scratch" {
+                        NoteType::Scratch
+                    } else {
+                        NoteType::Normal
+                    };
+                    buffer.revision += 1;
+                }
+                self.save_now(id, cx);
+                cx.notify();
+            }
             _ => self.open_note(id, cx),
         }
     }
@@ -364,7 +551,7 @@ impl AppState {
         ) {
             let id = self.session.tabs.remove(from);
             self.session.tabs.insert(to, id);
-            self.save_session();
+            self.save_session(cx);
             cx.notify();
         }
     }
@@ -407,6 +594,7 @@ impl AppState {
                     note,
                     revision: 1,
                     saved_revision: 0,
+                    save_failed: false,
                 },
             );
             self.open_note(&id, cx);
@@ -415,16 +603,48 @@ impl AppState {
     }
 
     pub fn delete(&mut self, id: &str, cx: &mut Context<Self>) {
-        // Cancel delayed edits and enqueue deletion after every already-enqueued write.
-        self.debounce.remove(id);
-        self.notes.remove(id);
-        self.session.tabs.retain(|tab| tab != id);
-        self.closed_tabs.retain(|tab| tab != id);
-        if self.session.active.as_deref() == Some(id) {
-            self.session.active = self.session.tabs.first().cloned();
+        if !self.deleting.insert(id.into()) {
+            return;
         }
-        self.perform(Request::Delete(id.into()), "Note deleted", cx);
-        self.save_session();
+        self.debounce.remove(id);
+        let response = self.store.request(Request::Delete(id.into()));
+        let id = id.to_owned();
+        cx.spawn(async move |state, cx| {
+            let result = response.recv().await;
+            let _ = state.update(cx, |state, cx| {
+                match result {
+                    Ok(Ok(_)) => {
+                        state.notes.remove(&id);
+                        state.session.tabs.retain(|tab| tab != &id);
+                        state.closed_tabs.retain(|tab| tab != &id);
+                        if state.session.active.as_ref() == Some(&id) {
+                            state.session.active = state.session.tabs.first().cloned();
+                        }
+                        if state.floating_note.as_ref() == Some(&id) {
+                            state.floating_note = None;
+                            state.floating_reminder = false;
+                        }
+                        state.save_session(cx);
+                        state.refresh(cx);
+                        state.refresh_reminders(cx);
+                        state.toast("Note deleted", cx);
+                    }
+                    Ok(Err(error)) => {
+                        state.deleting.remove(&id);
+                        state.fail(format!("Couldn't delete this note. {error}"), cx);
+                    }
+                    Err(_) => {
+                        state.deleting.remove(&id);
+                        state.fail(
+                            "Couldn't delete this note. Storage is unavailable.".into(),
+                            cx,
+                        );
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub fn perform(&mut self, request: Request, message: &str, cx: &mut Context<Self>) {
@@ -445,8 +665,22 @@ impl AppState {
         .detach();
     }
 
-    pub fn save_session(&self) {
-        let _ = self.store.request(Request::Session(self.session.clone()));
+    pub fn save_session(&mut self, cx: &mut Context<Self>) {
+        self.session_task = Some(cx.spawn(async move |state, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(250))
+                .await;
+            let response = state.update(cx, |state, _| {
+                state.store.request(Request::Session(state.session.clone()))
+            });
+            if let Ok(response) = response
+                && let Ok(Err(error)) = response.recv().await
+            {
+                let _ = state.update(cx, |state, cx| {
+                    state.fail(format!("Couldn't save the session. {error}"), cx)
+                });
+            }
+        }));
     }
 
     pub fn toast(&mut self, message: &str, cx: &mut Context<Self>) {
@@ -467,23 +701,73 @@ impl AppState {
         cx.notify();
     }
 
+    pub fn retry_saving(&mut self, cx: &mut Context<Self>) {
+        self.error = None;
+        let dirty: Vec<_> = self
+            .notes
+            .iter()
+            .filter(|(_, buffer)| buffer.revision != buffer.saved_revision)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in dirty {
+            self.save_now(&id, cx);
+        }
+        self.update_settings(self.settings.clone(), cx);
+        self.save_session(cx);
+        cx.notify();
+    }
+
+    fn prune_cache(&mut self) {
+        let limit = self.session.tabs.len() + 32;
+        if self.notes.len() <= limit {
+            return;
+        }
+        let mut candidates: Vec<_> = self
+            .notes
+            .iter()
+            .filter(|(id, buffer)| {
+                buffer.revision == buffer.saved_revision
+                    && !self.session.tabs.contains(id)
+                    && self.floating_note.as_ref() != Some(*id)
+                    && !self.deleting.contains(*id)
+            })
+            .map(|(id, buffer)| (id.clone(), buffer.note.updated_at))
+            .collect();
+        candidates.sort_by_key(|(_, time)| *time);
+        for (id, _) in candidates
+            .into_iter()
+            .take(self.notes.len().saturating_sub(limit))
+        {
+            self.notes.remove(&id);
+            self.debounce.remove(&id);
+        }
+    }
+
     pub fn quit(&mut self, cx: &mut Context<Self>) {
         if self.quitting {
             return;
         }
         self.quitting = true;
+        self.settings_task = None;
+        self.session_task = None;
+        self.background_task = None;
         self.debounce.clear();
         let mut pending = Vec::new();
-        for buffer in self.notes.values() {
-            if buffer.revision != buffer.saved_revision {
+        for (id, buffer) in &self.notes {
+            if !self.deleting.contains(id) && buffer.revision != buffer.saved_revision {
                 pending.push(self.store.request(Request::Save(buffer.note.clone())));
             }
         }
         pending.push(self.store.request(Request::Session(self.session.clone())));
+        pending.push(self.store.request(Request::Settings(self.settings.clone())));
         let store = self.store.clone();
         cx.spawn(async move |state, cx| {
             for response in pending {
-                if let Ok(Err(error)) = response.recv().await {
+                if let Err(error) = response
+                    .recv()
+                    .await
+                    .unwrap_or_else(|_| Err("Storage is unavailable.".into()))
+                {
                     let _ = state.update(cx, |state, cx| {
                         state.quitting = false;
                         state.fail(error, cx);
@@ -491,8 +775,18 @@ impl AppState {
                     return;
                 }
             }
-            if let Ok(Ok(_)) = store.request(Request::Shutdown).recv().await {
-                cx.update(|cx| cx.quit());
+            match store.request(Request::Shutdown).recv().await {
+                Ok(Ok(_)) => cx.update(|cx| cx.quit()),
+                result => {
+                    let error = match result {
+                        Ok(Err(error)) => error,
+                        _ => "Storage is unavailable.".into(),
+                    };
+                    let _ = state.update(cx, |state, cx| {
+                        state.quitting = false;
+                        state.fail(error, cx);
+                    });
+                }
             }
         })
         .detach();

@@ -15,6 +15,7 @@ pub enum Request {
     Settings(Settings),
     Session(Session),
     Shutdown,
+    Wake,
 }
 
 pub enum Response {
@@ -51,6 +52,7 @@ impl Store {
             .spawn(move || {
                 let mut database = database;
                 loop {
+                    let mut scheduler_failed = false;
                     let now = chrono::Utc::now().timestamp();
                     match database.due(now) {
                         Ok(reminders) => {
@@ -58,6 +60,7 @@ impl Store {
                                 // Persist delivery state before publishing, so a restart cannot flood notifications.
                                 // Missed/failed notifications remain visible in the Reminders page as notified.
                                 if let Err(error) = database.mark_notified(&reminder.id) {
+                                    scheduler_failed = true;
                                     let _ = events.try_send(StoreEvent::Error(error.to_string()));
                                 } else {
                                     let _ = events.try_send(StoreEvent::ReminderDue(reminder));
@@ -65,11 +68,12 @@ impl Store {
                             }
                         }
                         Err(error) => {
+                            scheduler_failed = true;
                             let _ = events.try_send(StoreEvent::Error(error.to_string()));
                         }
                     }
                     // No polling while idle. A note write, reminder change or the next due event wakes the worker.
-                    let timeout = match database.next_due() {
+                    let mut timeout = match database.next_due() {
                         Ok(Some(next)) => Duration::from_secs(
                             (next - chrono::Utc::now().timestamp()).max(0) as u64,
                         ),
@@ -79,19 +83,22 @@ impl Store {
                             Duration::from_secs(60)
                         }
                     };
+                    if scheduler_failed {
+                        timeout = timeout.max(Duration::from_secs(60));
+                    }
                     let (request, reply) = match receiver.recv_timeout(timeout) {
                         Ok(message) => message,
                         Err(mpsc::RecvTimeoutError::Timeout) => continue,
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     };
                     if matches!(request, Request::Shutdown) {
-                        let result = database
-                            .checkpoint()
-                            .map(|_| Response::Ok)
-                            .map_err(|e| e.to_string());
+                        if let Err(error) = database.checkpoint() {
+                            let _ = reply.try_send(Err(error.to_string()));
+                            continue;
+                        }
                         // Release SQLite's file handles before acknowledging the shutdown barrier.
                         drop(database);
-                        let _ = reply.try_send(result);
+                        let _ = reply.try_send(Ok(Response::Ok));
                         return;
                     }
                     let result = process(&mut database, request).map_err(|error| error.to_string());
@@ -114,6 +121,7 @@ impl Store {
 
 fn process(db: &mut Database, request: Request) -> anyhow::Result<Response> {
     match request {
+        Request::Wake => {}
         Request::List(collection, query) => {
             return Ok(Response::Notes(db.list(collection, &query)?));
         }

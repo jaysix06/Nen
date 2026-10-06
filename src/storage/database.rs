@@ -10,16 +10,35 @@ pub struct Database {
 impl Database {
     pub fn open(path: &Path) -> Result<Self> {
         let mut connection = Connection::open(path).context("Could not open notes database")?;
+        connection.create_scalar_function(
+            "still_lower",
+            1,
+            rusqlite::functions::FunctionFlags::SQLITE_UTF8
+                | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC,
+            |context| Ok(context.get::<String>(0)?.to_lowercase()),
+        )?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         connection.execute_batch(
             "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;",
         )?;
         let version: u32 = connection.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        anyhow::ensure!(version <= 1, "This database needs a newer version of Still");
+        anyhow::ensure!(version <= 3, "This database needs a newer version of Still");
         if version < 1 {
             let tx = connection.transaction()?;
             tx.execute_batch(include_str!("schema.sql"))?;
             tx.pragma_update(None, "user_version", 1)?;
+            tx.commit()?;
+        }
+        if version < 2 {
+            let tx = connection.transaction()?;
+            tx.execute_batch(include_str!("search_migration.sql"))?;
+            tx.pragma_update(None, "user_version", 2)?;
+            tx.commit()?;
+        }
+        if version < 3 {
+            let tx = connection.transaction()?;
+            tx.execute_batch(include_str!("reminder_series_migration.sql"))?;
+            tx.pragma_update(None, "user_version", 3)?;
             tx.commit()?;
         }
         Ok(Self { connection })
@@ -49,15 +68,47 @@ impl Database {
         let query = query.trim().to_lowercase();
         let archived = collection == Collection::Archive;
         let pinned = collection == Collection::Pinned;
+        if query.chars().count() >= 3 {
+            return self.indexed_search(archived, pinned, &query);
+        }
         let mut statement = self.connection.prepare(
             "SELECT n.id,CASE WHEN trim(n.title)='' THEN 'Untitled' ELSE n.title END,
-              CASE WHEN ?3='' OR instr(lower(n.content),?3)=0 THEN substr(n.content,1,160)
-                   ELSE substr(n.content,max(1,instr(lower(n.content),?3)-35),160) END,
+              CASE WHEN ?3='' OR instr(still_lower(n.content),?3)=0 THEN substr(n.content,1,160)
+                   ELSE substr(n.content,max(1,instr(still_lower(n.content),?3)-35),160) END,
               n.updated_at,n.is_pinned,n.is_archived,
               (SELECT min(scheduled_at) FROM reminders WHERE note_id=n.id AND status IN ('pending','notified'))
              FROM notes n WHERE is_archived=?1 AND (?2=0 OR is_pinned=1)
-             AND (?3='' OR instr(lower(n.title),?3)>0 OR instr(lower(n.content),?3)>0)
-             ORDER BY CASE WHEN ?3!='' AND instr(lower(n.title),?3)>0 THEN 0 ELSE 1 END,is_pinned DESC,updated_at DESC LIMIT 500")?;
+             AND (?3='' OR instr(still_lower(n.title),?3)>0 OR instr(still_lower(n.content),?3)>0)
+             ORDER BY CASE WHEN ?3!='' AND instr(still_lower(n.title),?3)>0 THEN 0 ELSE 1 END,is_pinned DESC,updated_at DESC")?;
+        let rows = statement.query_map(params![archived, pinned, query], |row| {
+            Ok(NoteSummary {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                preview: row.get(2)?,
+                updated_at: row.get(3)?,
+                is_pinned: row.get(4)?,
+                is_archived: row.get(5)?,
+                reminder_at: row.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    fn indexed_search(
+        &self,
+        archived: bool,
+        pinned: bool,
+        query: &str,
+    ) -> Result<Vec<NoteSummary>> {
+        let query = format!("\"{}\"", query.replace('"', "\"\""));
+        let mut statement=self.connection.prepare(
+            "SELECT n.id,CASE WHEN trim(n.title)='' THEN 'Untitled' ELSE n.title END,
+                snippet(notes_fts,1,'','','…',28),n.updated_at,n.is_pinned,n.is_archived,
+                (SELECT min(scheduled_at) FROM reminders WHERE note_id=n.id AND status IN ('pending','notified'))
+             FROM notes_fts CROSS JOIN notes n ON n.rowid=notes_fts.rowid
+             WHERE notes_fts MATCH ?3 AND n.is_archived=?1 AND (?2=0 OR n.is_pinned=1)
+             ORDER BY CASE WHEN n.rowid IN (SELECT rowid FROM notes_fts WHERE title MATCH ?3) THEN 0 ELSE 1 END,
+                n.is_pinned DESC,n.updated_at DESC")?;
         let rows = statement.query_map(params![archived, pinned, query], |row| {
             Ok(NoteSummary {
                 id: row.get(0)?,

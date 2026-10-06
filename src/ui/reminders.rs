@@ -21,6 +21,19 @@ pub struct ReminderPicker {
 }
 
 impl ReminderPicker {
+    pub fn focus_date(&self, window: &mut Window, cx: &mut App) {
+        self.date.update(cx, |input, cx| input.focus(window, cx));
+    }
+    pub fn preferred_height(&self) -> f32 {
+        let height = if !self.advanced {
+            304.
+        } else if matches!(self.recurrence, Recurrence::EveryDays(_)) {
+            416.
+        } else {
+            368.
+        };
+        height + if self.error.is_some() { 48. } else { 0. }
+    }
     pub fn new(
         state: Entity<AppState>,
         note_id: String,
@@ -31,11 +44,12 @@ impl ReminderPicker {
         let tomorrow = (Local::now() + DateDuration::days(1))
             .format("%Y-%m-%d")
             .to_string();
+        let default_time = state.read(cx).settings.default_reminder_time.clone();
         Self {
             state,
             note_id,
             date: cx.new(|cx| InputState::new(window, cx).default_value(tomorrow)),
-            time: cx.new(|cx| InputState::new(window, cx).default_value("09:00")),
+            time: cx.new(|cx| InputState::new(window, cx).default_value(default_time)),
             days: cx.new(|cx| InputState::new(window, cx).default_value("3")),
             recurrence: Recurrence::Never,
             advanced: false,
@@ -110,6 +124,7 @@ impl ReminderPicker {
                     status: "pending".into(),
                     title: String::new(),
                     preview: String::new(),
+                    series_id: None,
                 }),
                 "Reminder created",
                 cx,
@@ -367,7 +382,7 @@ pub fn reminders_page(state: &Entity<AppState>, cx: &App) -> AnyElement {
                             let id = id.clone();
                             dialog
                                 .title("Remove reminder?")
-                                .child("The note will be kept.")
+                                        .child("This removes the reminder and its repeating occurrences. The note will be kept.")
                                 .button_props(
                                     dialog::DialogButtonProps::default()
                                         .ok_text("Remove")

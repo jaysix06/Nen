@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local, Months, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Local, Months, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -85,6 +85,7 @@ pub enum Recurrence {
     Daily,
     Weekly,
     Monthly,
+    MonthlyOn(u32),
     EveryDays(u32),
 }
 
@@ -94,12 +95,22 @@ impl Recurrence {
             return None;
         }
         let mut date = DateTime::from_timestamp(scheduled_at, 0)?.with_timezone(&Local);
+        let anchor = if let Self::MonthlyOn(day) = self {
+            *day
+        } else {
+            date.day()
+        };
         // Preserve local wall-clock time across daylight-saving transitions.
         for _ in 0..100_000 {
             let local = date.naive_local();
             let next = match self {
                 Self::Never => return None,
-                Self::Monthly => local.checked_add_months(Months::new(1))?,
+                Self::Monthly | Self::MonthlyOn(_) => {
+                    let first = local.with_day(1)?.checked_add_months(Months::new(1))?;
+                    (1..=anchor.min(31))
+                        .rev()
+                        .find_map(|day| first.with_day(day))?
+                }
                 Self::Daily => local.checked_add_signed(chrono::Duration::days(1))?,
                 Self::Weekly => local.checked_add_signed(chrono::Duration::weeks(1))?,
                 Self::EveryDays(days) => {
@@ -122,7 +133,7 @@ impl Recurrence {
             Self::Never => "Never".into(),
             Self::Daily => "Daily".into(),
             Self::Weekly => "Weekly".into(),
-            Self::Monthly => "Monthly".into(),
+            Self::Monthly | Self::MonthlyOn(_) => "Monthly".into(),
             Self::EveryDays(days) => format!("Every {days} days"),
         }
     }
@@ -137,9 +148,12 @@ pub struct Reminder {
     pub status: String,
     pub title: String,
     pub preview: String,
+    #[serde(default)]
+    pub series_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct Session {
     pub tabs: Vec<String>,
     pub active: Option<String>,
@@ -147,6 +161,7 @@ pub struct Session {
     pub height: f32,
     pub x: Option<f32>,
     pub y: Option<f32>,
+    pub maximized: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,6 +170,7 @@ pub struct Settings {
     pub theme: String,
     pub editor_font_size: f32,
     pub restore_tabs: bool,
+    pub default_note_type: NoteType,
     pub minimize_to_tray: bool,
     pub launch_at_startup: bool,
     pub start_in_tray: bool,
@@ -162,6 +178,7 @@ pub struct Settings {
     pub floating_on_startup: bool,
     pub floating_topmost: bool,
     pub floating_hide_on_blur: bool,
+    pub floating_remember_position: bool,
     pub floating_width: f32,
     pub floating_opacity: f32,
     pub floating_position: String,
@@ -176,6 +193,7 @@ pub struct Settings {
     pub background_saturation: f32,
     pub background_opacity: f32,
     pub snooze_minutes: u32,
+    pub default_reminder_time: String,
     pub notification_sound: bool,
     pub reduced_motion: bool,
     pub shortcuts: std::collections::BTreeMap<String, String>,
@@ -187,6 +205,7 @@ impl Default for Settings {
             theme: "System".into(),
             editor_font_size: 17.,
             restore_tabs: true,
+            default_note_type: NoteType::Normal,
             minimize_to_tray: true,
             launch_at_startup: false,
             start_in_tray: false,
@@ -194,6 +213,7 @@ impl Default for Settings {
             floating_on_startup: false,
             floating_topmost: true,
             floating_hide_on_blur: true,
+            floating_remember_position: true,
             floating_width: 560.,
             floating_opacity: 1.,
             floating_position: "Top center".into(),
@@ -208,6 +228,7 @@ impl Default for Settings {
             background_saturation: 0.7,
             background_opacity: 0.5,
             snooze_minutes: 10,
+            default_reminder_time: "09:00".into(),
             notification_sound: true,
             reduced_motion: false,
             shortcuts: default_shortcuts(),
@@ -216,7 +237,7 @@ impl Default for Settings {
 }
 
 pub fn default_shortcuts() -> std::collections::BTreeMap<String, String> {
-    [
+    let mut bindings: std::collections::BTreeMap<String, String> = [
         ("new_note", "ctrl-n"),
         ("close_tab", "ctrl-w"),
         ("reopen_tab", "ctrl-shift-t"),
@@ -234,7 +255,11 @@ pub fn default_shortcuts() -> std::collections::BTreeMap<String, String> {
     ]
     .into_iter()
     .map(|(key, value)| (key.into(), value.into()))
-    .collect()
+    .collect();
+    for index in 1..=9 {
+        bindings.insert(format!("tab_{index}"), format!("ctrl-{index}"));
+    }
+    bindings
 }
 
 pub fn date_label(timestamp: i64) -> String {

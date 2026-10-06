@@ -32,7 +32,7 @@ pub fn palette(cx: &App) -> Palette {
             sidebar: rgb(0xeeeee8).into(),
             paper: rgb(0xfcfbf8).into(),
             text: rgb(0x2b332c).into(),
-            muted: rgb(0x747d70).into(),
+            muted: rgb(0x606b59).into(),
             line: rgb(0xe2e5dc).into(),
             selected: rgb(0xe5ebdf).into(),
             accent: rgb(0x426446).into(),
@@ -58,7 +58,27 @@ pub fn apply(settings: &Settings, cx: &mut App) {
         theme.colors.primary_foreground = p.paper;
         theme.colors.border = p.line;
     });
-    cx.set_reduce_motion(settings.reduced_motion || cx.reduce_motion());
+    cx.set_reduce_motion(settings.reduced_motion || crate::platform::reduced_motion());
+}
+
+pub fn surfaces(settings: &Settings, cx: &App) -> Palette {
+    let mut p = palette(cx);
+    let (paper, sidebar, canvas) = match settings.surface.as_str() {
+        "Frosted" => (0.94, 0.9, 0.8),
+        "Clear" => (0.88, 0.85, 0.72),
+        _ => (0.985, 0.96, 0.9),
+    };
+    p.paper = p.paper.alpha(paper);
+    p.sidebar = p.sidebar.alpha(sidebar);
+    p.canvas = p.canvas.alpha(canvas);
+    if settings.surface == "Clear" {
+        p.muted = if Theme::global(cx).is_dark() {
+            rgb(0xb5bdad).into()
+        } else {
+            rgb(0x44533c).into()
+        };
+    }
+    p
 }
 
 pub const SIDEBAR_WIDTH: f32 = 176.;

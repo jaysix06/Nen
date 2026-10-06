@@ -29,7 +29,13 @@ pub struct AppWindow {
     pub state: Entity<AppState>,
     pub search: Entity<InputState>,
     pub editors: HashMap<String, Entity<NoteEditor>>,
+    settings_view: Option<Entity<super::settings::SettingsView>>,
+    search_selection: usize,
+    list_scroll: UniformListScrollHandle,
+    search_task: Option<Task<()>>,
+    last_active: Option<String>,
     focus: FocusHandle,
+    inactive_focus: Option<FocusHandle>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -40,7 +46,13 @@ impl AppWindow {
             state: state.clone(),
             search: search.clone(),
             editors: HashMap::new(),
+            settings_view: None,
+            search_selection: 0,
+            list_scroll: UniformListScrollHandle::new(),
+            search_task: None,
+            last_active: None,
             focus: cx.focus_handle(),
+            inactive_focus: None,
             _subscriptions: Vec::new(),
         };
         view._subscriptions
@@ -64,24 +76,59 @@ impl AppWindow {
             cx.subscribe_in(&search, window, |view, input, event, _, cx| {
                 if matches!(event, InputEvent::Change) {
                     let query = input.read(cx).value().to_string();
-                    view.state.update(cx, |state, cx| state.search(query, cx));
+                    view.search_selection = 0;
+                    view.list_scroll.scroll_to_item(0, ScrollStrategy::Top);
+                    view.state.update(cx, |state, _| state.query = query);
+                    view.search_task = Some(cx.spawn(async move |view, cx| {
+                        cx.background_executor()
+                            .timer(std::time::Duration::from_millis(80))
+                            .await;
+                        let _ = view.update(cx, |view, cx| {
+                            view.state.update(cx, |state, cx| state.refresh(cx))
+                        });
+                    }));
                 }
             }),
         );
         view._subscriptions
             .push(cx.observe_window_bounds(window, |view, window, cx| {
                 let bounds = window.window_bounds().get_bounds();
-                view.state.update(cx, |state, _| {
+                view.state.update(cx, |state, cx| {
+                    state.session.maximized =
+                        matches!(window.window_bounds(), WindowBounds::Maximized(_));
                     state.session.width = bounds.size.width.into();
                     state.session.height = bounds.size.height.into();
                     state.session.x = Some(bounds.origin.x.into());
                     state.session.y = Some(bounds.origin.y.into());
-                    state.save_session();
+                    state.save_session(cx);
                 });
             }));
+        view._subscriptions
+            .push(cx.observe_window_activation(window, |view, window, cx| {
+                if window.is_window_active() {
+                    if let Some(focus) = view.inactive_focus.take() {
+                        window.focus(&focus, cx);
+                    }
+                } else {
+                    view.inactive_focus = window.focused(cx);
+                    window.blur(cx);
+                    // Focus listeners run during drawing. Hidden windows need
+                    // one final draw to stop their editor's caret timer.
+                    window.defer(cx, |window, cx| window.draw(cx).clear(cx));
+                }
+                cx.notify();
+            }));
         let close_state = state.clone();
-        window.on_window_should_close(cx, move |_, cx| {
-            close_state.update(cx, |state, cx| state.quit(cx));
+        window.on_window_should_close(cx, move |window, cx| {
+            close_state.update(cx, |state, cx| {
+                if state.settings.minimize_to_tray
+                    && state.desktop.as_ref().is_some_and(|d| d.tray.is_some())
+                {
+                    crate::platform::hide(window, cx);
+                } else {
+                    state.quit(cx);
+                }
+            });
             false
         });
         window.focus(&view.focus, cx);
@@ -95,6 +142,9 @@ impl AppWindow {
                     state.create_note(false, cx);
                 });
             }
+            "toggle_float" | "quick_note" | "open_app" | "settings" => self
+                .state
+                .update(cx, |state, cx| state.desktop_command(command, cx)),
             "close_tab" => {
                 let id = self.state.read(cx).session.active.clone();
                 if let Some(id) = id {
@@ -129,11 +179,74 @@ impl AppWindow {
                     });
                 }
             }
+            command if command.starts_with("tab_") => {
+                if let Some(index) = command
+                    .strip_prefix("tab_")
+                    .and_then(|n| n.parse::<usize>().ok())
+                    && let Some(id) = self
+                        .state
+                        .read(cx)
+                        .session
+                        .tabs
+                        .get(index.saturating_sub(1))
+                        .cloned()
+                {
+                    self.state.update(cx, |state, cx| state.open_note(&id, cx));
+                }
+            }
             _ => {}
         }
     }
 
     fn key_down(&mut self, keystroke: &Keystroke, window: &mut Window, cx: &mut Context<Self>) {
+        if self.state.read(cx).shortcut_capture.is_some() {
+            return;
+        }
+        if self.search.read(cx).focus_handle(cx).is_focused(window)
+            && !keystroke.modifiers.modified()
+        {
+            let count = self.state.read(cx).summaries.len();
+            match keystroke.key.as_str() {
+                "down" => {
+                    self.search_selection =
+                        (self.search_selection + 1).min(count.saturating_sub(1));
+                    self.list_scroll
+                        .scroll_to_item(self.search_selection, ScrollStrategy::Center);
+                    cx.notify();
+                    cx.stop_propagation();
+                    return;
+                }
+                "up" => {
+                    self.search_selection = self.search_selection.saturating_sub(1);
+                    self.list_scroll
+                        .scroll_to_item(self.search_selection, ScrollStrategy::Center);
+                    cx.notify();
+                    cx.stop_propagation();
+                    return;
+                }
+                "enter" => {
+                    if let Some(id) = self
+                        .state
+                        .read(cx)
+                        .summaries
+                        .get(self.search_selection)
+                        .map(|n| n.id.clone())
+                    {
+                        self.state.update(cx, |state, cx| state.open_note(&id, cx));
+                        if let Some(editor) = self.editors.get(&id) {
+                            editor.update(cx, |editor, cx| {
+                                editor.body.update(cx, |input, cx| input.focus(window, cx))
+                            });
+                        } else {
+                            window.focus(&self.focus, cx);
+                        }
+                    }
+                    cx.stop_propagation();
+                    return;
+                }
+                _ => {}
+            }
+        }
         let shortcut = keystroke.to_string().to_ascii_lowercase();
         let command = self
             .state
@@ -146,22 +259,11 @@ impl AppWindow {
         if let Some(command) = command {
             self.command(&command, window, cx);
             cx.stop_propagation();
-        } else if keystroke.modifiers.control && !keystroke.modifiers.alt {
-            if let Ok(index) = keystroke.key.parse::<usize>()
-                && index > 0
-                && index <= 9
-            {
-                let id = self.state.read(cx).session.tabs.get(index - 1).cloned();
-                if let Some(id) = id {
-                    self.state.update(cx, |state, cx| state.open_note(&id, cx));
-                    cx.stop_propagation();
-                }
-            }
         }
     }
 
     fn sidebar(&self, cx: &App) -> AnyElement {
-        let p = palette(cx);
+        let p = crate::theme::surfaces(&self.state.read(cx).settings, cx);
         let active = self.state.read(cx).collection;
         let mut sidebar = div()
             .w(px(SIDEBAR_WIDTH))
@@ -211,8 +313,23 @@ impl AppWindow {
                     }),
             );
         }
+        let settings_state = self.state.clone();
         sidebar
             .child(div().flex_1())
+            .child(
+                Button::new("settings-navigation")
+                    .ghost()
+                    .icon(IconName::Settings)
+                    .label("Settings")
+                    .justify_start()
+                    .w_full()
+                    .on_click(move |_, _, cx| {
+                        settings_state.update(cx, |state, cx| {
+                            state.settings_page = Some("General".into());
+                            cx.notify();
+                        })
+                    }),
+            )
             .child(
                 div()
                     .px_3()
@@ -224,8 +341,8 @@ impl AppWindow {
             .into_any_element()
     }
 
-    fn note_list(&self, cx: &App) -> AnyElement {
-        let p = palette(cx);
+    fn note_list(&self, window: &Window, cx: &App) -> AnyElement {
+        let p = crate::theme::surfaces(&self.state.read(cx).settings, cx);
         let app = self.state.read(cx);
         let title = if app.query.is_empty() {
             app.collection.label()
@@ -237,67 +354,99 @@ impl AppWindow {
             .v_flex()
             .flex_1()
             .min_h_0()
-            .overflow_y_scroll()
+            .overflow_hidden()
             .px_2()
             .py_2();
-        for note in &app.summaries {
-            let state = self.state.clone();
-            let id = note.id.clone();
-            let menu_state = state.clone();
-            let menu_id = id.clone();
-            let selected = app.session.active.as_ref() == Some(&note.id);
-            let preview = if note.preview.trim().is_empty() {
-                "Empty note".into()
-            } else {
-                note.preview.lines().take(2).collect::<Vec<_>>().join(" ")
-            };
-            let mut meta = div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .text_xs()
-                .text_color(p.muted)
-                .child(date_label(note.updated_at));
-            if note.is_pinned {
-                meta = meta.child(Icon::new(IconName::Pin).size_3());
-            }
-            if note.reminder_at.is_some() {
-                meta = meta.child(Icon::new(IconName::Bell).size_3().text_color(p.accent));
-            }
+        if !app.summaries.is_empty() {
+            let list_state = self.state.clone();
+            let search_focused = self.search.read(cx).focus_handle(cx).is_focused(window);
+            let selection = self.search_selection;
             list = list.child(
-                div()
-                    .id(SharedString::from(format!("note-{}", note.id)))
-                    .v_flex()
-                    .gap_2()
-                    .px_3()
-                    .py_3()
-                    .mb_1()
-                    .rounded(px(5.))
-                    .cursor_pointer()
-                    .when(selected, |row| row.bg(p.selected))
-                    .hover(|row| row.bg(p.selected))
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .truncate()
-                            .child(note.title.clone()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .text_color(p.muted)
-                            .max_h(px(37.))
-                            .overflow_hidden()
-                            .child(preview),
-                    )
-                    .child(meta)
-                    .on_click(move |_, _, cx| {
-                        state.update(cx, |state, cx| state.open_note(&id, cx))
-                    })
-                    .context_menu(move |menu, _, _| {
-                        note_menu(menu, menu_state.clone(), menu_id.clone())
-                    }),
+                uniform_list(
+                    "notes-virtual-list",
+                    app.summaries.len(),
+                    move |range, _, cx| {
+                        let app = list_state.read(cx);
+                        let mut rows = Vec::new();
+                        for (index, note) in app
+                            .summaries
+                            .iter()
+                            .enumerate()
+                            .skip(range.start)
+                            .take(range.len())
+                        {
+                            let state = list_state.clone();
+                            let id = note.id.clone();
+                            let menu_state = state.clone();
+                            let menu_id = id.clone();
+                            let selected = if search_focused {
+                                index == selection
+                            } else {
+                                app.session.active.as_ref() == Some(&note.id)
+                            };
+                            let preview = if note.preview.trim().is_empty() {
+                                "Empty note".into()
+                            } else {
+                                note.preview.lines().take(2).collect::<Vec<_>>().join(" ")
+                            };
+                            let mut meta = div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .text_xs()
+                                .text_color(p.muted)
+                                .child(date_label(note.updated_at));
+                            if note.is_pinned {
+                                meta = meta.child(Icon::new(IconName::Pin).size_3());
+                            }
+                            if note.reminder_at.is_some() {
+                                meta = meta
+                                    .child(Icon::new(IconName::Bell).size_3().text_color(p.accent));
+                            }
+                            rows.push(
+                                div()
+                                    .id(SharedString::from(format!("note-{}", note.id)))
+                                    .v_flex()
+                                    .h(px(112.))
+                                    .gap_2()
+                                    .px_3()
+                                    .py_3()
+                                    .mb_1()
+                                    .rounded(px(5.))
+                                    .cursor_pointer()
+                                    .when(selected, |row| row.bg(p.selected))
+                                    .hover(|row| row.bg(p.selected))
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .truncate()
+                                            .child(note.title.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .text_color(p.muted)
+                                            .max_h(px(37.))
+                                            .overflow_hidden()
+                                            .child(preview),
+                                    )
+                                    .child(meta)
+                                    .on_click(move |_, _, cx| {
+                                        state.update(cx, |state, cx| state.open_note(&id, cx))
+                                    })
+                                    .context_menu(move |menu, _, cx| {
+                                        note_menu(menu, menu_state.clone(), menu_id.clone(), cx)
+                                    })
+                                    .into_any_element(),
+                            );
+                        }
+                        rows
+                    },
+                )
+                .track_scroll(&self.list_scroll)
+                .flex_1()
+                .min_h_0(),
             );
         }
         if app.summaries.is_empty() {
@@ -343,8 +492,30 @@ impl AppWindow {
             .into_any_element()
     }
 
-    fn tabs(&self, cx: &App) -> AnyElement {
-        let p = palette(cx);
+    fn tabs(&self, window: &mut Window, cx: &mut App) -> AnyElement {
+        let p = crate::theme::surfaces(&self.state.read(cx).settings, cx);
+        let selected = self
+            .state
+            .read(cx)
+            .session
+            .active
+            .as_ref()
+            .and_then(|id| {
+                self.state
+                    .read(cx)
+                    .session
+                    .tabs
+                    .iter()
+                    .position(|tab| tab == id)
+            })
+            .unwrap_or(0);
+        let underline = gpui_kit::base::motion::spring(
+            "active-tab-line",
+            selected as f32 * 164.,
+            gpui_kit::base::motion::Spring::new(std::time::Duration::from_millis(160)),
+            window,
+            cx,
+        );
         let app = self.state.read(cx);
         let mut tabs = div()
             .id("tabs")
@@ -377,8 +548,8 @@ impl AppWindow {
                 div()
                     .id(SharedString::from(format!("tab-{id}")))
                     .h_full()
-                    .min_w(px(100.))
-                    .max_w(px(196.))
+                    .w(px(164.))
+                    .flex_shrink_0()
                     .px_3()
                     .gap_2()
                     .flex()
@@ -386,9 +557,7 @@ impl AppWindow {
                     .cursor_pointer()
                     .border_r_1()
                     .border_color(p.line)
-                    .when(active, |tab| {
-                        tab.bg(p.paper).border_b_2().border_color(p.accent)
-                    })
+                    .when(active, |tab| tab.bg(p.paper))
                     .hover(|tab| tab.bg(p.paper))
                     .on_drag(DragTab(id.clone()), |value, _, _, cx| {
                         cx.new(|_| value.clone())
@@ -421,13 +590,24 @@ impl AppWindow {
                     .on_click(move |_, _, cx| {
                         state.update(cx, |state, cx| state.open_note(&note_id, cx))
                     })
-                    .context_menu(move |menu, _, _| {
-                        note_menu(menu, menu_state.clone(), menu_id.clone())
+                    .context_menu(move |menu, _, cx| {
+                        note_menu(menu, menu_state.clone(), menu_id.clone(), cx)
                     }),
             );
         }
         let state = self.state.clone();
-        tabs.child(
+        tabs.when(!app.session.tabs.is_empty(), |tabs| {
+            tabs.child(
+                div()
+                    .absolute()
+                    .left(px(underline))
+                    .bottom_0()
+                    .w(px(164.))
+                    .h(px(2.))
+                    .bg(p.accent),
+            )
+        })
+        .child(
             Button::new("add-tab")
                 .ghost()
                 .small()
@@ -445,7 +625,8 @@ impl AppWindow {
 
 impl Render for AppWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = palette(cx);
+        let config = self.state.read(cx).settings.clone();
+        let p = crate::theme::surfaces(&config, cx);
         let active = self.state.read(cx).session.active.clone();
         let loaded = active
             .as_ref()
@@ -460,7 +641,19 @@ impl Render for AppWindow {
             self.editors.insert(id, editor);
         }
         let editor = active.as_ref().and_then(|id| self.editors.get(id)).cloned();
-        if let Some(id) = self.state.read(cx).focus_title.clone()
+        if window.is_window_active()
+            && active != self.last_active
+            && let Some(editor) = editor.as_ref()
+        {
+            if !self.search.read(cx).focus_handle(cx).is_focused(window) {
+                editor.update(cx, |editor, cx| {
+                    editor.body.update(cx, |input, cx| input.focus(window, cx))
+                });
+            }
+            self.last_active = active.clone();
+        }
+        if window.is_window_active()
+            && let Some(id) = self.state.read(cx).focus_title.clone()
             && let Some(editor) = self.editors.get(&id)
         {
             editor.update(cx, |editor, cx| editor.focus_title(window, cx));
@@ -499,6 +692,70 @@ impl Render for AppWindow {
                 )
                 .into_any_element()
         };
+        let settings_open = self.state.read(cx).settings_page.is_some();
+        if !settings_open {
+            self.settings_view = None;
+        }
+        if settings_open && self.settings_view.is_none() {
+            let state = self.state.clone();
+            self.settings_view =
+                Some(cx.new(|cx| super::settings::SettingsView::new(state, window, cx)));
+        }
+        let body = if settings_open {
+            div()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .child(self.sidebar(cx))
+                .children(self.settings_view.clone())
+                .into_any_element()
+        } else if self.state.read(cx).collection == Collection::Reminders {
+            div()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .child(self.sidebar(cx))
+                .child(content)
+                .into_any_element()
+        } else {
+            div()
+                .flex()
+                .flex_1()
+                .min_h_0()
+                .child(self.sidebar(cx))
+                .child(self.note_list(window, cx))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .v_flex()
+                        .child(self.tabs(window, cx))
+                        .child(content),
+                )
+                .into_any_element()
+        };
+        let color = u32::from_str_radix(config.background_color.trim_start_matches('#'), 16)
+            .unwrap_or(0xf6f5f1);
+        let mut background = div().absolute().size_full().bg(rgb(color));
+        if let Some(path) = self.state.read(cx).background.clone() {
+            background = background
+                .child(
+                    img(path)
+                        .size_full()
+                        .object_fit(match config.background_fit.as_str() {
+                            "Contain" => ObjectFit::Contain,
+                            "Center" => ObjectFit::None,
+                            _ => ObjectFit::Cover,
+                        })
+                        .opacity(config.background_opacity),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .size_full()
+                        .bg(rgb(0x000000).alpha(config.background_dim)),
+                );
+        }
         let mut root = div()
             .id("app")
             .key_context("Still")
@@ -509,9 +766,11 @@ impl Render for AppWindow {
             .text_color(p.text)
             .font_family("Segoe UI")
             .text_size(px(14.))
+            .child(background)
             .child(
                 div()
                     .h(px(58.))
+                    .bg(p.canvas)
                     .px_5()
                     .flex()
                     .items_center()
@@ -539,22 +798,7 @@ impl Render for AppWindow {
                             .aria_label("Search all notes"),
                     ),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    .child(self.sidebar(cx))
-                    .child(self.note_list(cx))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .v_flex()
-                            .child(self.tabs(cx))
-                            .child(content),
-                    ),
-            );
+            .child(body);
         if let Some(message) = self.state.read(cx).message.clone() {
             root = root.child(
                 div()
@@ -571,6 +815,8 @@ impl Render for AppWindow {
             );
         }
         if let Some(error) = self.state.read(cx).error.clone() {
+            let retry = self.state.clone();
+            let dismiss = self.state.clone();
             root = root.child(
                 div()
                     .absolute()
@@ -581,7 +827,32 @@ impl Render for AppWindow {
                     .rounded_md()
                     .bg(rgb(0x7d302b))
                     .text_color(rgb(0xffffff))
-                    .child(error),
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(div().flex_1().text_sm().child(error))
+                    .child(
+                        Button::new("retry-storage")
+                            .ghost()
+                            .small()
+                            .label("Retry saving")
+                            .on_click(move |_, _, cx| {
+                                retry.update(cx, |state, cx| state.retry_saving(cx))
+                            }),
+                    )
+                    .child(
+                        Button::new("dismiss-error")
+                            .ghost()
+                            .small()
+                            .icon(IconName::X)
+                            .tooltip("Dismiss")
+                            .on_click(move |_, _, cx| {
+                                dismiss.update(cx, |state, cx| {
+                                    state.error = None;
+                                    cx.notify();
+                                })
+                            }),
+                    ),
             );
         }
         root

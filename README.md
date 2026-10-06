@@ -1,6 +1,58 @@
 # Still
 
-A native, local-first notes app for Windows. Rust, GPUI and SQLite.
+A local-first Windows notes app built with Rust, GPUI and SQLite.
+
+Write it. Keep it accessible. Get reminded. Move on.
+
+## Run
+
+Open `dist/Still.exe`. No account or internet connection is required.
+Closing the window keeps Still in the tray by default. Use **Quit** in the
+tray menu to exit, or change **Settings → General → Close to tray**.
+Reminders work while the process is running, including in the tray. Missed
+reminders are handled when Still opens or Windows resumes.
+
+## Features
+
+- Debounced background autosave, local SQLite storage and recoverable archive.
+- Compact tabs with reorder, middle-click close, reopen and session restoration.
+- Plain text and Markdown writing, undo/redo, find and a formatted reading view.
+- Pinned notes and indexed local search, with title matches ranked first.
+- Note reminders with quick presets, daily/weekly/monthly/custom-day recurrence,
+  snooze, completion and native Windows notification actions.
+- One floating quick-access window that expands between search, results,
+  editing and inline reminders, sharing the main app's notes.
+- Configurable app and global shortcuts, conflict detection and registration rollback.
+- Light/Dark/System themes, editor sizing, local image backgrounds, fit, blur,
+  dim, saturation and opacity controls, plus Opaque/Frosted/Clear surfaces.
+- Tray access, optional startup registration, floating placement and opacity,
+  focus-loss hiding, position memory and reduced-motion support.
+
+The editor stores Markdown as text. Remote images are not loaded by the reading
+view. Links open in the default application only when clicked. Frosted surfaces
+use a cached, locally blurred background; they do not continuously blur other
+desktop windows.
+
+## Keyboard defaults
+
+| Action | Shortcut |
+|---|---|
+| New note | Ctrl+N |
+| Close / reopen tab | Ctrl+W / Ctrl+Shift+T |
+| Next / previous tab | Ctrl+Tab / Ctrl+Shift+Tab |
+| Select tab | Ctrl+1 through Ctrl+9 |
+| Find in note | Ctrl+F |
+| Search notes | Ctrl+Shift+F |
+| Add reminder | Ctrl+R |
+| Pin / archive | Ctrl+Shift+P / Ctrl+Shift+A |
+| Settings | Ctrl+, |
+| Toggle floating bar, globally | Ctrl+Shift+Space |
+| Quick note, globally | Ctrl+Alt+Space |
+| Open full app, globally | Ctrl+Alt+N |
+
+Use Up/Down and Enter in search to open results. Escape backs out through the
+floating states, then hides the compact bar. Shortcuts are editable under
+**Settings → Shortcuts**.
 
 ## Build requirements
 
@@ -16,8 +68,8 @@ From a Visual Studio developer shell:
 
 ```powershell
 cargo run
-cargo test
-cargo clippy --all-targets -- -D warnings
+cargo test --locked --features ui-testing
+cargo clippy --locked --features ui-testing --all-targets -- -D warnings
 ```
 
 If this checkout has portable tools in `.tools/msvc`, the wrapper configures
@@ -25,8 +77,10 @@ the compiler, SDK and GPUI shader compiler for the current process:
 
 ```powershell
 ./scripts/cargo.ps1 run
-./scripts/cargo.ps1 test
-./scripts/cargo.ps1 build --release
+./scripts/cargo.ps1 test --locked --features ui-testing
+./scripts/package.ps1
+./scripts/profile.ps1
+./scripts/cargo.ps1 run --example profile_storage
 ```
 
 Release builds compile GPUI's shaders with `fxc.exe`. The wrapper sets
@@ -35,12 +89,25 @@ the same tool on PATH or through the Windows SDK installation.
 
 ## Local data
 
-Notes, reminders, settings and session state belong in the Windows local
-application data directory. User notes are never transmitted. No accounts,
-telemetry or cloud services are used.
+Application data is stored under `%LOCALAPPDATA%\Still\Still\data`:
+`notes.sqlite`, its SQLite journal files, managed backgrounds and bounded logs.
+The app registers its own Windows notification identity and COM activator under
+the current user's registry. Startup registration is optional. It does not
+change Windows notification preferences.
+
+Windows must allow notifications for reminder banners to appear. If delivery is
+disabled, Still shows an error and keeps the reminder in the Reminders page.
+Quitting stops scheduling until the app opens again. It cannot wake a powered-off
+computer. Notes and images stay local. Logs do not include note content.
+There are no accounts, telemetry, analytics, advertising or cloud services.
 
 `STILL_DATA_DIR` can point to a separate directory for development and tests.
 Do not set it to a real user's database during automated testing.
 
-See [architecture](docs/architecture.md) for the implementation sequence and
-the boundaries between the UI, storage and Windows integrations.
+The wrapper requests a graceful, save-flushing exit from this checkout's running
+development executable before rebuilding. Release packaging excludes UI test
+and screenshot support. Windows integration is isolated in `src/platform`;
+the current executable targets Windows.
+
+See [architecture](docs/architecture.md) and [validation](docs/validation.md)
+for implementation boundaries, measured behavior and remaining validation limits.

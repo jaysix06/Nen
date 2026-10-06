@@ -1,6 +1,8 @@
 pub mod app;
+pub mod background;
 pub mod diagnostics;
 pub mod models;
+pub mod platform;
 pub mod storage;
 pub mod theme;
 pub mod ui;

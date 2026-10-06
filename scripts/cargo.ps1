@@ -1,6 +1,9 @@
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$CargoArgs)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
+if ($CargoArgs.Count -gt 0 -and $CargoArgs[0] -in @('build','test','run','rustc')) {
+    & (Join-Path $PSScriptRoot 'stop-development.ps1')
+}
 $cargoBin = Join-Path $env:USERPROFILE '.cargo/bin'
 $env:Path = "$cargoBin;$env:Path"
 $portableRoot = Join-Path $projectRoot '.tools/msvc'

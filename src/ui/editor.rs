@@ -1,4 +1,4 @@
-use crate::{app::AppState, models::date_label, theme::palette};
+use crate::{app::AppState, models::date_label};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{
     button::*,
@@ -15,6 +15,8 @@ pub struct NoteEditor {
     pub id: String,
     pub title: Entity<InputState>,
     pub body: Entity<TextareaState>,
+    pub compact: bool,
+    reading: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -36,6 +38,8 @@ impl NoteEditor {
             id,
             title: title.clone(),
             body: body.clone(),
+            compact: false,
+            reading: false,
             _subscriptions: Vec::new(),
         };
         view.sync(window, cx);
@@ -112,14 +116,49 @@ pub fn confirm_delete(state: Entity<AppState>, id: String, window: &mut Window, 
     });
 }
 
-pub fn note_menu(mut menu: PopupMenu, state: Entity<AppState>, id: String) -> PopupMenu {
+pub fn note_menu(mut menu: PopupMenu, state: Entity<AppState>, id: String, cx: &App) -> PopupMenu {
+    let app = state.read(cx);
+    let pinned = app
+        .notes
+        .get(&id)
+        .map(|buffer| buffer.note.is_pinned)
+        .or_else(|| {
+            app.summaries
+                .iter()
+                .find(|note| note.id == id)
+                .map(|note| note.is_pinned)
+        })
+        .unwrap_or(false);
+    let archived = app
+        .notes
+        .get(&id)
+        .map(|buffer| buffer.note.is_archived)
+        .or_else(|| {
+            app.summaries
+                .iter()
+                .find(|note| note.id == id)
+                .map(|note| note.is_archived)
+        })
+        .unwrap_or(false);
+    let scratch = app
+        .notes
+        .get(&id)
+        .is_some_and(|buffer| buffer.note.note_type == crate::models::NoteType::Scratch);
     for (label, command) in [
         ("Open", "open"),
         ("Rename", "rename"),
         ("Set reminder", "reminder"),
-        ("Pin / unpin", "pin"),
+        (if pinned { "Unpin" } else { "Pin" }, "pin"),
         ("Duplicate", "duplicate"),
-        ("Archive / restore", "archive"),
+        (
+            if scratch {
+                "Keep as normal note"
+            } else {
+                "Make scratch note"
+            },
+            if scratch { "normal" } else { "scratch" },
+        ),
+        (if archived { "Restore" } else { "Archive" }, "archive"),
     ] {
         let state = state.clone();
         let id = id.clone();
@@ -139,7 +178,7 @@ pub fn note_menu(mut menu: PopupMenu, state: Entity<AppState>, id: String) -> Po
 
 impl Render for NoteEditor {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = palette(cx);
+        let p = crate::theme::surfaces(&self.state.read(cx).settings, cx);
         let app = self.state.read(cx);
         let Some(buffer) = app.notes.get(&self.id) else {
             return div().into_any_element();
@@ -148,6 +187,7 @@ impl Render for NoteEditor {
         let pinned = note.is_pinned;
         let archived = note.is_archived;
         let dirty = buffer.revision != buffer.saved_revision;
+        let save_failed = buffer.save_failed;
         let words = note.content.split_whitespace().count();
         let size = app.settings.editor_font_size;
         let reminder = app
@@ -156,13 +196,40 @@ impl Render for NoteEditor {
             .find(|r| r.note_id == self.id && r.status != "completed")
             .map(|r| date_label(r.scheduled_at));
         let updated = date_label(note.updated_at);
+        let content = note.content.clone();
         let state = self.state.clone();
         let id = self.id.clone();
         let menu_state = self.state.clone();
         let menu_id = self.id.clone();
         let reminder_state = self.state.clone();
         let reminder_id = self.id.clone();
-        let mut tools = div()
+        let reminder_state2 = self.state.clone();
+        let caption = if let Some(reminder) = reminder {
+            Button::new("attached-reminder")
+                .ghost()
+                .small()
+                .icon(IconName::Bell)
+                .label(reminder)
+                .text_color(p.accent)
+                .on_click(move |_, _, cx| {
+                    reminder_state2.update(cx, |state, cx| {
+                        state.navigate(crate::models::Collection::Reminders, cx)
+                    })
+                })
+                .into_any_element()
+        } else {
+            div()
+                .flex_1()
+                .child(if archived {
+                    "Archived"
+                } else if note.note_type == crate::models::NoteType::Scratch {
+                    "Scratch"
+                } else {
+                    ""
+                })
+                .into_any_element()
+        };
+        let tools = div()
             .flex()
             .items_center()
             .justify_between()
@@ -170,11 +237,30 @@ impl Render for NoteEditor {
             .px_6()
             .text_xs()
             .text_color(p.muted)
-            .child(div().child(if archived { "Archive" } else { "Notes" }))
+            .child(caption)
             .child(
                 div()
                     .flex()
                     .gap_1()
+                    .child(
+                        Button::new("read-note")
+                            .ghost()
+                            .small()
+                            .icon(if self.reading {
+                                IconName::Pencil
+                            } else {
+                                IconName::BookOpen
+                            })
+                            .tooltip(if self.reading {
+                                "Edit note"
+                            } else {
+                                "Reading view"
+                            })
+                            .on_click(cx.listener(|view, _, _, cx| {
+                                view.reading = !view.reading;
+                                cx.notify();
+                            })),
+                    )
                     .child(
                         Button::new("add-reminder")
                             .ghost()
@@ -207,27 +293,24 @@ impl Render for NoteEditor {
                             .small()
                             .icon(IconName::Ellipsis)
                             .tooltip("Note actions")
-                            .dropdown_menu(move |menu, _, _| {
-                                note_menu(menu, menu_state.clone(), menu_id.clone())
+                            .dropdown_menu(move |menu, _, cx| {
+                                note_menu(menu, menu_state.clone(), menu_id.clone(), cx)
                             }),
                     ),
             );
-        if let Some(reminder) = reminder {
-            tools = tools.child(div().text_color(p.accent).child(reminder));
-        }
         div()
             .size_full()
             .v_flex()
             .min_w_0()
             .bg(p.paper)
-            .child(tools)
+            .when(!self.compact, |view| view.child(tools))
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
                     .v_flex()
-                    .px(px(48.))
-                    .pt(px(20.))
+                    .px(px(if self.compact { 24. } else { 48. }))
+                    .pt(px(if self.compact { 8. } else { 20. }))
                     .pb_5()
                     .gap_4()
                     .child(
@@ -238,21 +321,54 @@ impl Render for NoteEditor {
                             .focus_bordered(false)
                             .h(px(46.))
                             .px_0()
-                            .text_size(px(28.))
+                            .text_size(px(if self.compact { 21. } else { 28. }))
                             .line_height(relative(1.25))
                             .font_weight(FontWeight::SEMIBOLD)
                             .aria_label("Note title"),
                     )
-                    .child(
-                        Textarea::new(&self.body)
-                            .appearance(false)
-                            .bordered(false)
-                            .size_full()
-                            .px_0()
-                            .text_size(px(size))
-                            .line_height(relative(1.65))
-                            .aria_label("Note content"),
-                    ),
+                    .when(!self.reading, |view| {
+                        view.child(
+                            Textarea::new(&self.body)
+                                .appearance(false)
+                                .bordered(false)
+                                .size_full()
+                                .px_0()
+                                .text_size(px(size))
+                                .line_height(relative(1.65))
+                                .aria_label("Note content"),
+                        )
+                    })
+                    .when(self.reading, |view| {
+                        view.child(
+                            div()
+                                .id("reading-view")
+                                .flex_1()
+                                .min_h_0()
+                                .overflow_y_scroll()
+                                .text_size(px(size))
+                                .line_height(relative(1.65))
+                                .child(
+                                    gpui_kit::base::text::TextView::markdown(
+                                        "note-reading-text",
+                                        content,
+                                    )
+                                    .image_source(|_| ImageSource::from("icons/image-off.svg"))
+                                    .on_link_click(|url, _, _, cx| {
+                                        if url.starts_with("https://")
+                                            || url.starts_with("http://")
+                                            || url.starts_with("mailto:")
+                                        {
+                                            cx.open_url(url);
+                                        }
+                                    })
+                                    .style(
+                                        gpui_kit::base::text::TextViewStyle::from_theme(
+                                            &gpui_kit::base::Theme::global(cx),
+                                        ),
+                                    ),
+                                ),
+                        )
+                    }),
             )
             .child(
                 div()
@@ -266,7 +382,9 @@ impl Render for NoteEditor {
                     .text_xs()
                     .text_color(p.muted)
                     .child(format!("{words} words"))
-                    .child(if dirty {
+                    .child(if save_failed {
+                        "Not saved".into()
+                    } else if dirty {
                         "Saving...".into()
                     } else {
                         format!("Edited {updated}")

@@ -11,7 +11,7 @@ impl Database {
     fn query_reminders(&self, due_only: bool, now: i64) -> Result<Vec<Reminder>> {
         let mut statement = self.connection.prepare(
             "SELECT r.id,r.note_id,r.scheduled_at,r.recurrence_rule,r.status,
-             CASE WHEN trim(n.title)='' THEN 'Untitled' ELSE n.title END,substr(n.content,1,180)
+             CASE WHEN trim(n.title)='' THEN 'Untitled' ELSE n.title END,substr(n.content,1,180),r.series_id
              FROM reminders r JOIN notes n ON n.id=r.note_id
              WHERE ?1=0 OR (r.status='pending' AND r.scheduled_at<=?2) ORDER BY r.scheduled_at",
         )?;
@@ -24,6 +24,7 @@ impl Database {
                 status: row.get(4)?,
                 title: row.get(5)?,
                 preview: row.get(6)?,
+                series_id: row.get(7)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -31,14 +32,15 @@ impl Database {
 
     pub fn add_reminder(&self, reminder: &Reminder) -> Result<()> {
         self.connection.execute(
-            "INSERT INTO reminders(id,note_id,scheduled_at,recurrence_rule,status,created_at)
-             VALUES(?1,?2,?3,?4,'pending',?5)",
+            "INSERT INTO reminders(id,note_id,scheduled_at,recurrence_rule,status,created_at,series_id)
+             VALUES(?1,?2,?3,?4,'pending',?5,?6)",
             params![
                 reminder.id,
                 reminder.note_id,
                 reminder.scheduled_at,
                 serde_json::to_string(&reminder.recurrence)?,
-                chrono::Utc::now().timestamp()
+                chrono::Utc::now().timestamp(),
+                reminder.series_id.as_deref().unwrap_or(&reminder.id)
             ],
         )?;
         Ok(())
@@ -104,22 +106,33 @@ impl Database {
 
     pub fn remove_reminder(&self, id: &str) -> Result<()> {
         self.connection
-            .execute("DELETE FROM reminders WHERE id=?1", [id])?;
+            .execute("DELETE FROM reminders WHERE id=?1 OR series_id=(SELECT series_id FROM reminders WHERE id=?1)", [id])?;
         Ok(())
     }
 }
 
 fn insert_next(tx: &rusqlite::Transaction<'_>, reminder: &Reminder, now: i64) -> Result<()> {
+    use chrono::Datelike;
+    let recurrence = if reminder.recurrence == Recurrence::Monthly {
+        Recurrence::MonthlyOn(
+            chrono::DateTime::from_timestamp(reminder.scheduled_at, 0)
+                .map(|d| d.with_timezone(&chrono::Local).day())
+                .unwrap_or(1),
+        )
+    } else {
+        reminder.recurrence.clone()
+    };
     if let Some(next) = reminder.recurrence.next_after(reminder.scheduled_at, now) {
         tx.execute(
-            "INSERT INTO reminders(id,note_id,scheduled_at,recurrence_rule,status,created_at)
-            VALUES(?1,?2,?3,?4,'pending',?5)",
+            "INSERT INTO reminders(id,note_id,scheduled_at,recurrence_rule,status,created_at,series_id)
+            VALUES(?1,?2,?3,?4,'pending',?5,?6)",
             params![
                 uuid::Uuid::new_v4().to_string(),
                 reminder.note_id,
                 next,
-                serde_json::to_string(&reminder.recurrence)?,
-                now
+                serde_json::to_string(&recurrence)?,
+                now,
+                reminder.series_id.as_deref().unwrap_or(&reminder.id)
             ],
         )?;
     }

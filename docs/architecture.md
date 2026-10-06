@@ -2,14 +2,11 @@
 
 Still is a local Windows notes utility built with Rust, GPUI and SQLite.
 
-## Implementation order
+## Implementation
 
-1. Compile and run a native GPUI window on Windows.
-2. Verify transactional SQLite storage, migrations and background persistence.
-3. Connect notes, tabs, search, pinning and archive to the editor.
-4. Add reminders and an event-driven Windows background service.
-5. Add the shared quick-access window and keyboard bindings.
-6. Add appearance and shortcut settings, then inspect and profile the app.
+The shell was compiled on Windows before UI features were added. Storage,
+editing, reminders, platform integration and customization were built in
+successive compiled and tested slices.
 
 ## Boundaries
 
@@ -20,6 +17,30 @@ Still is a local Windows notes utility built with Rust, GPUI and SQLite.
 - Windows integrations live in the platform module.
 - Settings and session state live in SQLite alongside notes.
 - Application data and managed images live under the Windows local app-data directory.
+
+The worker owns one SQLite connection with WAL, full synchronous writes,
+foreign keys and transactional schema migrations. Its next-event timeout wakes
+for commands, reminder deadlines and Windows clock/resume events; there is no
+one-second reminder polling. Recurring reminders retain a series identity so
+cancellation removes future occurrences. Monthly reminders retain their day
+anchor across shorter months.
+
+Autosave uses a 350 ms debounce. Each buffer has an edited and persisted
+revision, so an older acknowledgement cannot mark newer text saved. Failed
+writes preserve the dirty buffer. Deletion gates edits and pending saves until
+its database acknowledgement, preventing a delayed save from recreating a
+deleted note. Shutdown queues dirty buffers and preferences before a database
+checkpoint barrier.
+
+Search uses FTS5 trigram indexing for queries of at least three characters.
+Short queries use a Unicode lowercase substring function. Lists render visible
+rows only. Full note content is loaded for open notes; clean closed buffers are
+bounded to 32 additional recent notes.
+
+Windows hooks, global shortcuts, tray events and COM notification callbacks
+feed shared application state through channels. Notification registration uses
+only the current user's registry. Global shortcut replacements roll back to the
+old registration if a new combination is unavailable.
 
 ## Design
 

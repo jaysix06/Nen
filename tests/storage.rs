@@ -3,6 +3,46 @@ use std::path::Path;
 use still::{models::*, storage::Database};
 
 #[test]
+fn categories_filter_search_and_deletion_preserves_notes() -> anyhow::Result<()> {
+    let mut db = Database::open(Path::new(":memory:"))?;
+    db.save_category("custom", "Studio")?;
+    db.save_category("custom", "Writing")?;
+    let mut note = Note::new(NoteType::Normal);
+    note.category_id = Some("custom".into());
+    note.title = "A meeting in the studio".into();
+    note.content = "Private draft".into();
+    note.is_pinned = true;
+    db.save_note(&note)?;
+    let other = Note::new(NoteType::Normal);
+    db.save_note(&other)?;
+    assert_eq!(db.list_in_category(Collection::All, "meeting", Some("custom"))?.len(), 1);
+    assert!(db.list_in_category(Collection::All, "meeting", Some("work"))?.is_empty());
+    assert_eq!(db.list_in_category(Collection::Pinned, "A", Some("custom"))?.len(), 1);
+    assert_eq!(db.categories()?.last().expect("category").name, "Writing");
+    note.is_archived = true;
+    db.save_note(&note)?;
+    db.delete_category("custom")?;
+    let saved = db.note(&note.id)?.expect("note survives category deletion");
+    assert_eq!(saved.content, "Private draft");
+    assert!(saved.is_archived && saved.is_pinned);
+    assert_eq!(saved.category_id, None);
+    assert_eq!(db.list(Collection::Archive, "meeting")?.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn category_names_are_validated_without_case_sensitive_duplicates() -> anyhow::Result<()> {
+    let db = Database::open(Path::new(":memory:"))?;
+    db.save_category("accent", "  Écriture  ")?;
+    assert!(db.save_category("duplicate", "éCRITURE").is_err());
+    assert!(db.save_category("empty", "   ").is_err());
+    assert!(db.save_category("long", &"a".repeat(49)).is_err());
+    db.save_category("accent", "Écriture")?;
+    assert_eq!(db.categories()?.last().expect("category").name, "Écriture");
+    Ok(())
+}
+
+#[test]
 fn save_reopen_search_archive_and_delete() -> anyhow::Result<()> {
     let database = Database::open(Path::new(":memory:"))?;
     let mut note = Note::new(NoteType::Normal);

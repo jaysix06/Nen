@@ -4,6 +4,10 @@ use std::{path::PathBuf, sync::mpsc, time::Duration};
 
 pub enum Request {
     List(Collection, String),
+    CategoryList(Collection, String, Option<String>),
+    Categories,
+    SaveCategory(String, String),
+    DeleteCategory(String),
     Load(String),
     Save(Note),
     Delete(String),
@@ -20,6 +24,7 @@ pub enum Request {
 
 pub enum Response {
     Notes(Vec<NoteSummary>),
+    Categories(Vec<Category>),
     Note(Option<Note>),
     Reminders(Vec<Reminder>),
     Ok,
@@ -121,6 +126,16 @@ impl Store {
 
 fn process(db: &mut Database, request: Request) -> anyhow::Result<Response> {
     match request {
+        Request::CategoryList(collection, query, category) => {
+            return Ok(Response::Notes(db.list_in_category(
+                collection,
+                &query,
+                category.as_deref(),
+            )?));
+        }
+        Request::Categories => return Ok(Response::Categories(db.categories()?)),
+        Request::SaveCategory(id, name) => db.save_category(&id, &name)?,
+        Request::DeleteCategory(id) => db.delete_category(&id)?,
         Request::Wake => {}
         Request::List(collection, query) => {
             return Ok(Response::Notes(db.list(collection, &query)?));

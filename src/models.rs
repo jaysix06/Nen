@@ -13,6 +13,8 @@ pub enum NoteType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
     pub id: String,
+    #[serde(default)]
+    pub category_id: Option<String>,
     pub title: String,
     pub content: String,
     pub note_type: NoteType,
@@ -28,6 +30,7 @@ impl Note {
         let now = Utc::now().timestamp();
         Self {
             id: Uuid::new_v4().to_string(),
+            category_id: None,
             title: String::new(),
             content: String::new(),
             note_type,
@@ -50,12 +53,19 @@ impl Note {
 #[derive(Debug, Clone)]
 pub struct NoteSummary {
     pub id: String,
+    pub category_id: Option<String>,
     pub title: String,
     pub preview: String,
     pub updated_at: i64,
     pub is_pinned: bool,
     pub is_archived: bool,
     pub reminder_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Category {
+    pub id: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

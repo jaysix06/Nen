@@ -1,7 +1,7 @@
 param([switch]$IncludePackaged)
 $projectRoot = Split-Path $PSScriptRoot -Parent
-$targets = @((Join-Path $projectRoot 'target/debug/still.exe'), (Join-Path $projectRoot 'target/release/still.exe'))
-if ($IncludePackaged) { $targets += Join-Path $projectRoot 'dist/Still.exe' }
+$targets = @([IO.Path]::GetFullPath((Join-Path $projectRoot 'target/debug/still.exe')), [IO.Path]::GetFullPath((Join-Path $projectRoot 'target/release/still.exe')))
+if ($IncludePackaged) { $targets += [IO.Path]::GetFullPath((Join-Path $projectRoot 'dist/Still.exe')) }
 $running = @(Get-Process still -ErrorAction SilentlyContinue | Where-Object { $_.Path -in $targets })
 if ($running.Count -eq 0) { return }
 if (-not ('StillBuildLifecycle' -as [type])) {

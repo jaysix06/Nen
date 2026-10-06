@@ -18,6 +18,9 @@ reminders are handled when Still opens or Windows resumes.
 
 - Debounced background autosave, local SQLite storage and recoverable archive.
 - Compact tabs with reorder, middle-click close, reopen and session restoration.
+- Integrated native window controls and drag regions, with actual notes in the sidebar.
+- A compact category picker for Personal, Work, Ideas, pinned notes, reminders
+  and archive. Create, rename and remove categories; removing one keeps its notes.
 - Plain text and Markdown writing, undo/redo, find and a formatted reading view.
 - Pinned notes and indexed local search, with title matches ranked first.
 - Note reminders with quick presets, daily/weekly/monthly/custom-day recurrence,
@@ -25,7 +28,8 @@ reminders are handled when Still opens or Windows resumes.
 - One floating quick-access window that expands between search, results,
   editing and inline reminders, sharing the main app's notes.
 - Configurable app and global shortcuts, conflict detection and registration rollback.
-- Light/Dark/System themes, editor sizing, local image backgrounds, fit, blur,
+- Dark by default, a bundled local lake wallpaper, four restrained accent colors,
+  Light/Dark/System themes, editor sizing, local image backgrounds, fit, blur,
   dim, saturation and opacity controls, plus Opaque/Frosted/Clear surfaces.
 - Tray access, optional startup registration, floating placement and opacity,
   focus-loss hiding, position memory and reduced-motion support.
@@ -34,6 +38,8 @@ The editor stores Markdown as text. Remote images are not loaded by the reading
 view. Links open in the default application only when clicked. Frosted surfaces
 use a cached, locally blurred background; they do not continuously blur other
 desktop windows.
+Dark translucent surfaces retain a minimum readability tint on custom images
+and solid colors. Background transformations are cached between launches.
 
 ## Keyboard defaults
 
@@ -45,6 +51,7 @@ desktop windows.
 | Select tab | Ctrl+1 through Ctrl+9 |
 | Find in note | Ctrl+F |
 | Search notes | Ctrl+Shift+F |
+| Toggle notes sidebar | Ctrl+B |
 | Add reminder | Ctrl+R |
 | Pin / archive | Ctrl+Shift+P / Ctrl+Shift+A |
 | Settings | Ctrl+, |

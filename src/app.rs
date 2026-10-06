@@ -48,6 +48,7 @@ pub struct AppState {
     debounce: HashMap<String, Task<()>>,
     message_task: Option<Task<()>>,
     list_generation: u64,
+    category_generation: u64,
     quitting: bool,
 }
 
@@ -58,6 +59,31 @@ impl AppState {
         mut session: Session,
         cx: &mut Context<Self>,
     ) -> Self {
+        if settings.design_revision < 2 {
+            // Update the previous untouched appearance defaults while retaining
+            // deliberately chosen themes, backgrounds and all other preferences.
+            if settings.theme == "System"
+                && settings.surface == "Opaque"
+                && settings.background_color == "#f6f5f1"
+                && settings.background_image.is_none()
+            {
+                let defaults = Settings::default();
+                settings.theme = defaults.theme;
+                settings.surface = defaults.surface;
+                settings.background_color = defaults.background_color;
+                settings.background_blur = defaults.background_blur;
+                settings.background_dim = defaults.background_dim;
+                settings.background_saturation = defaults.background_saturation;
+                settings.background_opacity = defaults.background_opacity;
+                settings.default_wallpaper = defaults.default_wallpaper;
+                if settings.editor_font_size == 17. {
+                    settings.editor_font_size = defaults.editor_font_size;
+                }
+            } else {
+                settings.default_wallpaper = false;
+            }
+            settings.design_revision = 2;
+        }
         for (action, binding) in default_shortcuts() {
             if !settings.shortcuts.contains_key(&action) {
                 let available = !settings.shortcuts.values().any(|value| value == &binding);
@@ -103,6 +129,7 @@ impl AppState {
             debounce: HashMap::new(),
             message_task: None,
             list_generation: 0,
+            category_generation: 0,
             quitting: false,
         };
         for id in tabs {
@@ -157,8 +184,10 @@ impl AppState {
 
     pub fn update_settings(&mut self, settings: Settings, cx: &mut Context<Self>) {
         let appearance_changed = self.settings.theme != settings.theme
+            || self.settings.accent_color != settings.accent_color
             || self.settings.reduced_motion != settings.reduced_motion;
         let background_changed = self.settings.background_image != settings.background_image
+            || self.settings.default_wallpaper != settings.default_wallpaper
             || self.settings.background_blur != settings.background_blur
             || self.settings.background_saturation != settings.background_saturation
             || self.settings.surface != settings.surface;
@@ -216,7 +245,9 @@ impl AppState {
                     Ok(path) => {
                         let previous = state.background.take();
                         state.background = path;
-                        if let Some(previous) = previous {
+                        if let Some(previous) =
+                            previous.filter(|previous| Some(previous) != state.background.as_ref())
+                        {
                             // Release decoded pixels when a new background replaces this asset.
                             ImageSource::from(previous.clone()).remove_asset(cx);
                             cx.background_executor()
@@ -286,10 +317,15 @@ impl AppState {
     }
 
     pub fn refresh_categories(&mut self, cx: &mut Context<Self>) {
+        self.category_generation += 1;
+        let generation = self.category_generation;
         let response = self.store.request(Request::Categories);
         cx.spawn(async move |state, cx| {
             if let Ok(result) = response.recv().await {
                 let _ = state.update(cx, |state, cx| {
+                    if state.category_generation != generation {
+                        return;
+                    }
                     match result {
                         Ok(Response::Categories(categories)) => {
                             state.categories = categories
@@ -328,6 +364,7 @@ impl AppState {
         if self.deleted_categories.contains(&id) {
             return;
         }
+        self.category_generation += 1;
         let response = self.store.request(Request::SaveCategory(id.clone(), name));
         cx.spawn(async move |state, cx| {
             if let Ok(result) = response.recv().await {
@@ -348,6 +385,7 @@ impl AppState {
     }
 
     pub fn delete_category(&mut self, id: String, cx: &mut Context<Self>) {
+        self.category_generation += 1;
         let response = self.store.request(Request::DeleteCategory(id.clone()));
         cx.spawn(async move |state, cx| {
             if let Ok(result) = response.recv().await {

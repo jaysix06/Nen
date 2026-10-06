@@ -377,10 +377,11 @@ pub fn reminders_page(state: &Entity<AppState>, cx: &App) -> AnyElement {
                     .on_click(move |_, window, cx| {
                         let state = remove.clone();
                         let id = remove_id.clone();
-                        window.open_dialog(cx, move |dialog, _, _| {
+                        window.open_alert_dialog(cx, move |dialog, _, _| {
                             let state = state.clone();
                             let id = id.clone();
                             dialog
+                                .confirm()
                                 .title("Remove reminder?")
                                         .child("This removes the reminder and its repeating occurrences. The note will be kept.")
                                 .button_props(

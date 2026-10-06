@@ -31,6 +31,14 @@ writes preserve the dirty buffer. Deletion gates edits and pending saves until
 its database acknowledgement, preventing a delayed save from recreating a
 deleted note. Shutdown queues dirty buffers and preferences before a database
 checkpoint barrier.
+The shutdown acknowledgement follows both SQLite handle release and command
+channel closure, so subsequent writes fail immediately.
+
+Categories use a versioned migration and a nullable foreign key on notes.
+Removing a category clears its associations without deleting notes. Late saves
+normalize an association to an already removed category to null, preserving
+the latest text. Category loading uses generations to discard stale responses.
+The selected category and sidebar visibility are part of the saved session.
 
 Search uses FTS5 trigram indexing for queries of at least three characters.
 Short queries use a Unicode lowercase substring function. Lists render visible
@@ -44,10 +52,23 @@ old registration if a new combination is unavailable.
 
 ## Design
 
-The interface uses Segoe UI, warm neutral surfaces, a muted green accent,
-compact square-edged tabs and a narrow navigation rail. Editor text is larger
-than interface text. Borders divide functional regions, rather than boxing
-every control. Motion is brief and runs only during an interaction.
+The interface uses Segoe UI, dark neutral surfaces, a quiet green accent and
+compact square-edged tabs. A category popover sits in the integrated titlebar;
+the left pane contains actual notes. GPUI's native window-control hit regions
+handle dragging, minimizing, maximizing and closing. Interactive titlebar
+controls occlude the parent drag region. The notes pane opens and closes through
+a 200 ms interruptible spring, with a configurable Ctrl+B default.
+
+The bundled lake photograph remains local. Image transformations run off the
+UI thread and use an atomic disk cache keyed by source metadata and transform
+parameters. Dark translucent surfaces keep custom backgrounds readable through
+a minimum tint. Contrast checks cover editor text and secondary text across
+Light/Dark and Opaque/Frosted/Clear combinations. Editor text is larger than
+interface text. Hairline separators divide functional regions; settings use
+compact rows. Settled motion requests no frames.
+
+The native shell and visual hierarchy were informed by
+[Zeron](https://github.com/zeronsh/zeron), without copying its implementation.
 
 The [beUI motion catalog](https://beui.dev/components/motion),
 [Morphing Tabs](https://beui.dev/components/blocks/morphing-tabs) and

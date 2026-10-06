@@ -16,6 +16,12 @@ fn importing_and_transforming_a_background_never_changes_the_original() -> anyho
         ..Default::default()
     };
     let rendered = background::prepare(&settings, &root)?.expect("rendered background");
+    let modified = std::fs::metadata(&rendered)?.modified()?;
+    assert_eq!(
+        background::prepare(&settings, &root)?.as_ref(),
+        Some(&rendered)
+    );
+    assert_eq!(std::fs::metadata(&rendered)?.modified()?, modified);
     let rendered = image::open(rendered)?.to_rgba8();
     assert_eq!(rendered.get_pixel(10, 10)[0], rendered.get_pixel(10, 10)[1]);
     assert_eq!(std::fs::read(&original)?, bytes);

@@ -706,24 +706,23 @@ impl Render for AppWindow {
             .unwrap_or(0xf6f5f1);
         let mut background = div().absolute().size_full().bg(rgb(color));
         if let Some(path) = self.state.read(cx).background.clone() {
-            background = background
-                .child(
-                    img(path)
-                        .size_full()
-                        .object_fit(match config.background_fit.as_str() {
-                            "Contain" => ObjectFit::Contain,
-                            "Center" => ObjectFit::None,
-                            _ => ObjectFit::Cover,
-                        })
-                        .opacity(config.background_opacity),
-                )
-                .child(
-                    div()
-                        .absolute()
-                        .size_full()
-                        .bg(rgb(0x000000).alpha(config.background_dim)),
-                );
+            background = background.child(
+                img(path)
+                    .size_full()
+                    .object_fit(match config.background_fit.as_str() {
+                        "Contain" => ObjectFit::Contain,
+                        "Center" => ObjectFit::None,
+                        _ => ObjectFit::Cover,
+                    })
+                    .opacity(config.background_opacity),
+            );
         }
+        background = background.child(
+            div()
+                .absolute()
+                .size_full()
+                .bg(rgb(0x000000).alpha(crate::theme::background_dim(&config, cx))),
+        );
         let mut root = div()
             .id("app")
             .key_context("Still")

@@ -179,7 +179,10 @@ pub struct Session {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    #[serde(default)]
+    pub design_revision: u8,
     pub theme: String,
+    pub accent_color: String,
     pub editor_font_size: f32,
     pub restore_tabs: bool,
     pub default_note_type: NoteType,
@@ -199,6 +202,7 @@ pub struct Settings {
     pub surface: String,
     pub background_color: String,
     pub background_image: Option<String>,
+    pub default_wallpaper: bool,
     pub background_fit: String,
     pub background_blur: f32,
     pub background_dim: f32,
@@ -214,8 +218,10 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            theme: "System".into(),
-            editor_font_size: 17.,
+            design_revision: 2,
+            theme: "Dark".into(),
+            accent_color: "Green".into(),
+            editor_font_size: 16.,
             restore_tabs: true,
             default_note_type: NoteType::Normal,
             minimize_to_tray: true,
@@ -227,18 +233,19 @@ impl Default for Settings {
             floating_hide_on_blur: true,
             floating_remember_position: true,
             floating_width: 560.,
-            floating_opacity: 1.,
+            floating_opacity: 0.96,
             floating_position: "Top center".into(),
             floating_x: None,
             floating_y: None,
-            surface: "Opaque".into(),
-            background_color: "#f6f5f1".into(),
+            surface: "Frosted".into(),
+            background_color: "#121715".into(),
             background_image: None,
+            default_wallpaper: true,
             background_fit: "Cover".into(),
-            background_blur: 0.,
-            background_dim: 0.25,
-            background_saturation: 0.7,
-            background_opacity: 0.5,
+            background_blur: 2.,
+            background_dim: 0.35,
+            background_saturation: 1.,
+            background_opacity: 1.,
             snooze_minutes: 10,
             default_reminder_time: "09:00".into(),
             notification_sound: true,

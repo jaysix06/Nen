@@ -4,13 +4,42 @@ use image::{GenericImageView, ImageReader};
 use std::path::{Path, PathBuf};
 
 pub fn prepare(settings: &Settings, directory: &Path) -> Result<Option<PathBuf>> {
-    let Some(path) = settings.background_image.as_ref() else {
+    let assets = directory.join("backgrounds");
+    std::fs::create_dir_all(&assets)?;
+    let path = if let Some(path) = &settings.background_image {
+        PathBuf::from(path)
+    } else if settings.default_wallpaper {
+        let path = assets.join("still-lake-v1.png");
+        if !path.exists() {
+            std::fs::write(&path, include_bytes!("../assets/still-lake.png"))?;
+        }
+        path
+    } else {
         return Ok(None);
     };
-    if std::fs::metadata(path)?.len() > 100 * 1024 * 1024 {
+    let metadata = std::fs::metadata(&path)?;
+    if metadata.len() > 100 * 1024 * 1024 {
         bail!("Choose an image smaller than 100 MB.");
     }
-    let mut reader = ImageReader::open(path)?.with_guessed_format()?;
+    let blur = if settings.surface == "Frosted" {
+        settings.background_blur.max(2.)
+    } else {
+        settings.background_blur
+    }
+    .clamp(0., 40.);
+    let saturation = settings.background_saturation.clamp(0., 2.);
+    use std::hash::{Hash, Hasher};
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    path.hash(&mut hash);
+    metadata.len().hash(&mut hash);
+    metadata.modified()?.hash(&mut hash);
+    blur.to_bits().hash(&mut hash);
+    saturation.to_bits().hash(&mut hash);
+    let cache = assets.join(format!("render-v2-{:x}.png", hash.finish()));
+    if cache.exists() {
+        return Ok(Some(cache));
+    }
+    let mut reader = ImageReader::open(&path)?.with_guessed_format()?;
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(16384);
     limits.max_image_height = Some(16384);
@@ -21,16 +50,10 @@ pub fn prepare(settings: &Settings, directory: &Path) -> Result<Option<PathBuf>>
     if w > 2560 || h > 1600 {
         image = image.resize(2560, 1600, image::imageops::FilterType::Triangle);
     }
-    let blur = if settings.surface == "Frosted" {
-        settings.background_blur.max(12.)
-    } else {
-        settings.background_blur
-    };
     if blur > 0.1 {
         image = image.blur(blur.clamp(0., 40.));
     }
     let mut pixels = image.to_rgba8();
-    let saturation = settings.background_saturation.clamp(0., 2.);
     for pixel in pixels.pixels_mut() {
         let gray = 0.2126 * pixel[0] as f32 + 0.7152 * pixel[1] as f32 + 0.0722 * pixel[2] as f32;
         for channel in 0..3 {
@@ -38,11 +61,14 @@ pub fn prepare(settings: &Settings, directory: &Path) -> Result<Option<PathBuf>>
                 (gray + (pixel[channel] as f32 - gray) * saturation).clamp(0., 255.) as u8;
         }
     }
-    let assets = directory.join("backgrounds");
-    std::fs::create_dir_all(&assets)?;
-    let path = assets.join(format!("render-{}.png", uuid::Uuid::new_v4()));
-    pixels.save(&path)?;
-    Ok(Some(path))
+    let pending = assets.join(format!("pending-{}.png", uuid::Uuid::new_v4()));
+    pixels.save(&pending)?;
+    if cache.exists() {
+        std::fs::remove_file(pending)?;
+    } else {
+        std::fs::rename(pending, &cache)?;
+    }
+    Ok(Some(cache))
 }
 
 pub fn import(path: &Path, directory: &Path) -> Result<PathBuf> {

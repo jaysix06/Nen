@@ -5,15 +5,20 @@ toolchain. The executable uses native GPUI rendering, not a browser.
 
 ## Checks
 
-- `cargo test --locked --features ui-testing`: 21 passing tests.
+- `cargo test --locked --features ui-testing`: 26 passing tests.
 - `cargo clippy --locked --features ui-testing --all-targets -- -D warnings`: clean.
 - `cargo fmt -- --check`: clean.
 - `cargo build --locked --release`: successful; UI testing features excluded.
-- Native main, settings and four floating-state captures were inspected.
-  See [main](screenshots/main.png), [compact](screenshots/compact.png),
+- Native dark/light shells, category picker/form, hidden sidebar, preferences
+  and four floating-state captures were inspected.
+  See [main](screenshots/main.png), [light](screenshots/light.png),
+  [categories](screenshots/categories.png), [category form](screenshots/category-form.png),
+  [hidden sidebar](screenshots/sidebar-hidden.png), [background](screenshots/background.png),
+  [compact](screenshots/compact.png),
   [results](screenshots/results.png), [editor](screenshots/note.png),
   [reminder](screenshots/reminder.png) and [appearance](screenshots/settings.png).
 - Normal Windows launches and restored sessions were checked for callback errors.
+- Packaged Still 0.2.0 starts and flushes a graceful shutdown with a clean release log.
 
 Tests cover migrations without data loss, Unicode and literal search, title
 ranking, pin/archive/delete, queued-write shutdown flushing, monthly recurrence
@@ -21,33 +26,44 @@ anchors, missed recurrence handling, snooze, idempotent completion and series
 cancellation. GPUI tests exercise typing, tab closing/reopening, shortcut
 capture/conflicts, shared floating editing/reminders, focus restoration,
 failed-save preservation and a delete-versus-load race. Image tests verify
-that import/transformation leaves the user's original untouched.
+that import/transformation leaves the user's original untouched and cached
+transformations avoid repeated writes. Category tests exercise creation and
+rename through real dialogs, cancellation and confirmation of deletion,
+category filtering, late autosave after category removal and Ctrl+B persistence.
+Legacy preference checks preserve chosen colors/themes. Contrast tests verify
+at least 4.5:1 editor/secondary text against extreme custom backgrounds across
+both themes and all three surface modes. The dialog/keyboard persistence test
+runs with reduced motion enabled; normal motion is inspected in GPU captures.
 
 Windows tests register real global shortcuts and verify that a failed
 replacement restores the old registration. COM notification activation tests
 verify argument delivery and application identity checking. Deliberately
 breaking the save-failure flag made its regression test fail; the original
 implementation was restored and the full suite passed again.
+Removing the sidebar toggle's state change also caused its regression test to
+fail; the original code was restored before the final suite.
 
 ## Measurements
 
-Final release executable: 28,704,768 bytes (27.38 MiB).
+Still 0.2.0 release executable: 31,051,264 bytes (29.61 MiB), including its local wallpaper.
 
 | Measurement | Result |
 |---|---:|
-| New process to native window creation | 695 ms |
-| Working set after idle measurement | 67.3 MiB |
-| Private memory | 88.8 MiB |
-| Visible editor idle CPU, one-core equivalent | 1.72% |
-| Hidden/tray idle CPU, one-core equivalent | 0% in the 10-second sample |
-| List 5,000 note summaries | 18.02 ms |
-| Indexed search in 5,000 notes, mean of 100 | 1.37 ms |
+| New process to native window creation | 447–779 ms |
+| Working set after idle measurement | 80.3–82.8 MiB |
+| Private memory | 103.2–104.8 MiB |
+| Visible editor idle CPU, one-core equivalent | 2.03–9.06% |
+| Hidden/tray idle CPU, one-core equivalent | 0.62–0.86% |
+| Visible / hidden CPU, normalized over 12 logical cores | 0.17–0.75% / 0.05–0.07% |
+| List 5,000 note summaries | 23.71 ms |
+| Indexed search in 5,000 notes, mean of 100 | 1.93 ms |
 
 Window profiling used an isolated demo database, the release executable and
-separate 10-second visible/hidden samples. These are one machine's measurements,
+separate 10-second and 20-second visible/hidden samples with the wallpaper loaded.
+These are one machine's measurements,
 not cold-boot or input-to-display latency guarantees. CPU is expressed relative
-to one logical core, not the whole processor. The visible editor includes caret
-redraws; the hidden/tray sample recorded no measurable process CPU time.
+to one logical core unless the row explicitly normalizes over all 12 cores.
+The visible editor includes caret redraws and varied between the two runs.
 Storage timing used a debug-build, in-memory database with realistic
 paragraphs; it excludes disk-write latency and the search UI's 80 ms debounce.
 
@@ -70,7 +86,7 @@ a Windows profile that allows notifications; their native registration,
 activation routing and persistence logic are implemented and tested separately.
 
 The desktop automation helper was unavailable, so captures came directly from
-GPUI's GPU renderer. Normal, light-theme client areas were visually inspected;
+GPUI's GPU renderer. Dark and light client areas were visually inspected;
 manual checks across high-DPI/multiple-monitor arrangements and screen readers
 remain advisable. Actual input-to-display typing latency and cold-boot startup
 were not instrumented.

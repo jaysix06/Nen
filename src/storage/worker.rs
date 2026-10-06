@@ -102,6 +102,9 @@ impl Store {
                             continue;
                         }
                         // Release SQLite's file handles before acknowledging the shutdown barrier.
+                        // Close the command channel too, so new requests fail immediately
+                        // once a caller has observed successful shutdown.
+                        drop(receiver);
                         drop(database);
                         let _ = reply.try_send(Ok(Response::Ok));
                         return;

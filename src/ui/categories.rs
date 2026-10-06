@@ -31,6 +31,7 @@ pub fn picker(state: Entity<AppState>, cx: &App) -> impl IntoElement {
 }
 
 pub fn category_menu(mut menu: PopupMenu, state: Entity<AppState>, cx: &App) -> PopupMenu {
+    menu = menu.min_w(px(216.));
     let app = state.read(cx);
     let active = app.session.category_id.clone();
     let collection = app.collection;
@@ -88,10 +89,11 @@ pub fn category_menu(mut menu: PopupMenu, state: Entity<AppState>, cx: &App) -> 
             PopupMenuItem::new("Delete category…").on_click(move |_, window, cx| {
                 let state = state.clone();
                 let id = category.id.clone();
-                window.open_dialog(cx, move |dialog, _, _| {
+                window.open_alert_dialog(cx, move |dialog, _, _| {
                     let state = state.clone();
                     let id = id.clone();
                     dialog
+                        .confirm()
                         .title("Delete category?")
                         .child("Its notes will stay in All Notes.")
                         .button_props(
@@ -152,11 +154,12 @@ fn edit_category(
         input: input.clone(),
         error: None,
     });
-    window.open_dialog(cx, move |dialog, _, _| {
+    window.open_alert_dialog(cx, move |dialog, _, _| {
         let state = state.clone();
         let form = form.clone();
         let id = id.clone();
         dialog
+            .confirm()
             .title(title)
             .w(px(340.))
             .child(form.clone())

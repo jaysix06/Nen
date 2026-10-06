@@ -97,10 +97,11 @@ impl NoteEditor {
 }
 
 pub fn confirm_delete(state: Entity<AppState>, id: String, window: &mut Window, cx: &mut App) {
-    window.open_dialog(cx, move |dialog, _, _| {
+    window.open_alert_dialog(cx, move |dialog, _, _| {
         let state = state.clone();
         let id = id.clone();
         dialog
+            .confirm()
             .title("Delete this note?")
             .child("This permanently deletes the note and its reminders.")
             .button_props(
@@ -242,8 +243,8 @@ impl Render for NoteEditor {
             .flex()
             .items_center()
             .justify_between()
-            .h(px(46.))
-            .px_6()
+            .h(px(32.))
+            .px_5()
             .text_xs()
             .text_color(p.muted)
             .child(caption)
@@ -318,19 +319,19 @@ impl Render for NoteEditor {
                     .flex_1()
                     .min_h_0()
                     .v_flex()
-                    .px(px(if self.compact { 24. } else { 48. }))
-                    .pt(px(if self.compact { 8. } else { 20. }))
+                    .px(px(if self.compact { 24. } else { 32. }))
+                    .pt(px(if self.compact { 8. } else { 12. }))
                     .pb_5()
-                    .gap_4()
+                    .gap_2()
                     .child(
                         Input::new(&self.title)
                             .id("note-title")
                             .appearance(false)
                             .bordered(false)
                             .focus_bordered(false)
-                            .h(px(46.))
+                            .h(px(36.))
                             .px_0()
-                            .text_size(px(if self.compact { 21. } else { 28. }))
+                            .text_size(px(if self.compact { 20. } else { 22. }))
                             .line_height(relative(1.25))
                             .font_weight(FontWeight::SEMIBOLD)
                             .aria_label("Note title"),
@@ -343,7 +344,7 @@ impl Render for NoteEditor {
                                 .size_full()
                                 .px_0()
                                 .text_size(px(size))
-                                .line_height(relative(1.65))
+                                .line_height(relative(1.55))
                                 .aria_label("Note content"),
                         )
                     })
@@ -355,7 +356,7 @@ impl Render for NoteEditor {
                                 .min_h_0()
                                 .overflow_y_scroll()
                                 .text_size(px(size))
-                                .line_height(relative(1.65))
+                                .line_height(relative(1.55))
                                 .child(
                                     gpui_kit::base::text::TextView::markdown(
                                         "note-reading-text",

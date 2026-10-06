@@ -258,6 +258,7 @@ impl SettingsView {
                                 let mut settings = state.settings.clone();
                                 match key {
                                     "theme" => settings.theme = choice.into(),
+                                    "accent" => settings.accent_color = choice.into(),
                                     "surface" => settings.surface = choice.into(),
                                     "position" => settings.floating_position = choice.into(),
                                     "fit" => settings.background_fit = choice.into(),
@@ -297,7 +298,7 @@ impl SettingsView {
                     div()
                         .w(px(36.))
                         .text_xs()
-                        .text_color(palette(cx).muted)
+                        .text_color(crate::theme::surfaces(&self.state.read(cx).settings, cx).muted)
                         .child(if key == "font" || key == "width" || key == "blur" {
                             format!("{value:.0}")
                         } else {
@@ -364,7 +365,7 @@ fn row(label: impl Into<SharedString>, control: impl IntoElement, cx: &App) -> A
         .items_center()
         .justify_between()
         .gap_5()
-        .min_h(px(58.))
+        .min_h(px(48.))
         .border_b_1()
         .border_color(palette(cx).line)
         .child(div().text_sm().child(label.into()))
@@ -374,7 +375,7 @@ fn row(label: impl Into<SharedString>, control: impl IntoElement, cx: &App) -> A
 
 impl Render for SettingsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = palette(cx);
+        let p = crate::theme::surfaces(&self.state.read(cx).settings, cx);
         let settings = self.state.read(cx).settings.clone();
         let section = self
             .state
@@ -432,11 +433,11 @@ impl Render for SettingsView {
             .v_flex()
             .overflow_y_scroll()
             .px_8()
-            .py_6()
+            .py_5()
             .bg(p.paper)
             .child(
                 div()
-                    .text_size(px(23.))
+                    .text_size(px(18.))
                     .font_semibold()
                     .mb_5()
                     .child(section.clone()),
@@ -467,12 +468,20 @@ impl Render for SettingsView {
                         vec!["Opaque", "Frosted", "Clear"],
                         cx,
                     ))
+                    .child(self.choice(
+                        "accent",
+                        "Accent",
+                        settings.accent_color,
+                        vec!["Green", "Blue", "Amber", "Rose"],
+                        cx,
+                    ))
                     .child(self.range("font", "Editor font size", cx))
                     .child(self.toggle("motion", "Reduce motion", settings.reduced_motion, cx));
             }
             "Background" => {
                 let choose = self.state.clone();
                 let remove = self.state.clone();
+                let restore = self.state.clone();
                 content = content
                     .child(row(
                         "Solid color",
@@ -486,6 +495,21 @@ impl Render for SettingsView {
                         div()
                             .flex()
                             .gap_2()
+                            .child(
+                                Button::new("default-wallpaper")
+                                    .ghost()
+                                    .small()
+                                    .label("Still")
+                                    .tooltip("Use the bundled wallpaper")
+                                    .on_click(move |_, _, cx| {
+                                        restore.update(cx, |state, cx| {
+                                            let mut settings = state.settings.clone();
+                                            settings.background_image = None;
+                                            settings.default_wallpaper = true;
+                                            state.update_settings(settings, cx);
+                                        })
+                                    }),
+                            )
                             .child(Button::new("choose-image").label("Choose image").on_click(
                                 move |_, _, cx| {
                                     let paths = cx.prompt_for_paths(PathPromptOptions {
@@ -546,11 +570,15 @@ impl Render for SettingsView {
                                     .ghost()
                                     .icon(IconName::X)
                                     .tooltip("Remove image")
-                                    .disabled(settings.background_image.is_none())
+                                    .disabled(
+                                        settings.background_image.is_none()
+                                            && !settings.default_wallpaper,
+                                    )
                                     .on_click(move |_, _, cx| {
                                         remove.update(cx, |state, cx| {
                                             let mut settings = state.settings.clone();
                                             settings.background_image = None;
+                                            settings.default_wallpaper = false;
                                             state.update_settings(settings, cx);
                                         })
                                     }),
@@ -704,9 +732,10 @@ impl Render for SettingsView {
                         .label("Reset all shortcuts")
                         .on_click(move |_, window, cx| {
                             let state = state.clone();
-                            window.open_dialog(cx, move |dialog, _, _| {
+                            window.open_alert_dialog(cx, move |dialog, _, _| {
                                 let state = state.clone();
                                 dialog
+                                    .confirm()
                                     .title("Reset all shortcuts?")
                                     .button_props(
                                         dialog::DialogButtonProps::default()
@@ -749,9 +778,10 @@ impl Render for SettingsView {
                             .label("Reset preferences")
                             .on_click(move |_, window, cx| {
                                 let state = state.clone();
-                                window.open_dialog(cx, move |dialog, _, _| {
+                                window.open_alert_dialog(cx, move |dialog, _, _| {
                                     let state = state.clone();
                                     dialog
+                                        .confirm()
                                         .title("Reset preferences?")
                                         .child("Your notes, reminders and shortcuts will be kept.")
                                         .button_props(

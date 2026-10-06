@@ -104,7 +104,7 @@ fn search_ranks_title_before_pinned_content() -> anyhow::Result<()> {
 fn settings_round_trip_and_defaults() -> anyhow::Result<()> {
     let db = Database::open(Path::new(":memory:"))?;
     let mut settings: Settings = db.get_setting("appearance")?;
-    assert_eq!(settings.theme, "System");
+    assert_eq!(settings.theme, "Dark");
     settings.theme = "Dark".into();
     db.set_setting("appearance", &settings)?;
     assert_eq!(db.get_setting::<Settings>("appearance")?.theme, "Dark");

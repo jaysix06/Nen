@@ -102,10 +102,33 @@ fn run() -> anyhow::Result<()> {
                             let floating = std::env::args().any(|arg| arg == "--capture-floating");
                             capture_state.update(cx, |state, cx| {
                                 let mut settings = state.settings.clone();
-                                settings.theme = "Light".into();
+                                settings.theme =
+                                    if std::env::args().any(|arg| arg == "--capture-light") {
+                                        "Light"
+                                    } else {
+                                        "Dark"
+                                    }
+                                    .into();
                                 state.update_settings(settings, cx);
                                 if std::env::args().any(|arg| arg == "--capture-settings") {
                                     state.settings_page = Some("Appearance".into());
+                                }
+                                if std::env::args().any(|arg| arg == "--capture-background") {
+                                    state.settings_page = Some("Background".into());
+                                }
+                                if std::env::args().any(|arg| arg == "--capture-work") {
+                                    let note = state
+                                        .summaries
+                                        .iter()
+                                        .find(|note| note.category_id.as_deref() == Some("work"))
+                                        .map(|note| note.id.clone());
+                                    state.select_category("work", cx);
+                                    if let Some(id) = note {
+                                        state.open_note(&id, cx);
+                                    }
+                                }
+                                if std::env::args().any(|arg| arg == "--capture-sidebar-hidden") {
+                                    state.session.sidebar_hidden = true;
                                 }
                                 if floating && std::env::args().any(|arg| arg == "--capture-note") {
                                     state.floating_note = state.session.active.clone();
@@ -129,8 +152,23 @@ fn run() -> anyhow::Result<()> {
                                     }
                                 });
                             }
+                            // Capture the settled image layer as well as the native UI.
+                            // This bounded wait exists only in the UI-testing build.
+                            for _ in 0..100 {
+                                let pending = capture_state.read_with(cx, |state, _| {
+                                    (state.settings.default_wallpaper
+                                        || state.settings.background_image.is_some())
+                                        && state.background.is_none()
+                                });
+                                if !pending {
+                                    break;
+                                }
+                                cx.background_executor()
+                                    .timer(std::time::Duration::from_millis(100))
+                                    .await;
+                            }
                             cx.background_executor()
-                                .timer(std::time::Duration::from_millis(600))
+                                .timer(std::time::Duration::from_millis(400))
                                 .await;
                             let target = if floating {
                                 capture_state
@@ -146,6 +184,23 @@ fn run() -> anyhow::Result<()> {
                                 });
                                 cx.background_executor()
                                     .timer(std::time::Duration::from_millis(80))
+                                    .await;
+                            }
+                            if std::env::args().any(|arg| {
+                                arg == "--capture-categories" || arg == "--capture-category-form"
+                            }) {
+                                let _ = target.update(cx, |_, window, cx| {
+                                    use gpui_kit::test::TestWindowExt;
+                                    window.click("category-picker", cx);
+                                    window.render_frame(cx);
+                                    if std::env::args().any(|arg| arg == "--capture-category-form")
+                                    {
+                                        window.within("popup-menu").click(10usize, cx);
+                                        window.render_frame(cx);
+                                    }
+                                });
+                                cx.background_executor()
+                                    .timer(std::time::Duration::from_millis(250))
                                     .await;
                             }
                             let result = target.update(cx, |_, window, cx| {
@@ -318,6 +373,16 @@ fn seed_demo(path: &std::path::Path) -> anyhow::Result<()> {
     ] {
         let mut note = Note::new(NoteType::Normal);
         note.title = title.into();
+        note.category_id = Some(
+            if title.starts_with("Monday") {
+                "work"
+            } else if title.starts_with("Ideas") {
+                "ideas"
+            } else {
+                "personal"
+            }
+            .into(),
+        );
         note.content = content.into();
         note.is_pinned = pinned;
         db.save_note(&note)?;

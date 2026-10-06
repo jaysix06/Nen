@@ -83,7 +83,7 @@ impl Desktop {
             .create_subkey(format!("Software\\Classes\\AppUserModelId\\{APP_ID}"))?
             .0;
         key.set_value("DisplayName", &"Nen")?;
-        let icon_path = crate::diagnostics::data_directory()?.join("nen-icon-v026.png");
+        let icon_path = crate::diagnostics::data_directory()?.join("nen-icon-v027.png");
         if !icon_path.exists() {
             std::fs::write(&icon_path, include_bytes!("../../assets/nen.png"))?;
         }

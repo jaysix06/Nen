@@ -19,6 +19,19 @@ fn application_icon_preserves_transparency_and_windows_sizes() {
             image.get_pixel(size / 2, size / 2).0[3] > 0,
             "visible artwork"
         );
+        let mut bounds = (size, size, 0, 0);
+        for (x, y, pixel) in image.enumerate_pixels() {
+            if pixel.0[3] >= 128 {
+                bounds.0 = bounds.0.min(x);
+                bounds.1 = bounds.1.min(y);
+                bounds.2 = bounds.2.max(x);
+                bounds.3 = bounds.3.max(y);
+            }
+        }
+        assert!(
+            bounds.0 <= 1 && bounds.1 <= 1 && bounds.2 >= size - 2 && bounds.3 >= size - 2,
+            "{size}px icon has excess outer padding: {bounds:?}"
+        );
         if size == 32 {
             assert_eq!(frame, include_bytes!("../assets/nen-tray.png"));
         }

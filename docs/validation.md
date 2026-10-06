@@ -18,7 +18,14 @@ toolchain. The executable uses native GPUI rendering, not a browser.
   [results](screenshots/results.png), [editor](screenshots/note.png),
   [reminder](screenshots/reminder.png) and [appearance](screenshots/settings.png).
 - Normal Windows launches and restored sessions were checked for callback errors.
-- Packaged Nen 0.2.6 starts and flushes a graceful shutdown with a clean release log.
+- Packaged Nen 0.2.7 starts and flushes a graceful shutdown with a clean release log.
+
+The 0.2.7 icon correction crops the outer transparent padding before resizing,
+ignoring near-transparent stray pixels and preserving the tile's aspect ratio
+and rounded corners. All seven ICO sizes are checked for excess padding.
+The padding regression check failed against the original generated icons.
+The packaged Windows icon was extracted and inspected; notification registration
+uses the new cropped artwork. The original supplied PNG remains unchanged.
 
 The 0.2.6 rename retains the notification identity, COM activator and legacy
 single-instance mutex. Data checks verify existing notes and preferences reopen
@@ -84,7 +91,7 @@ fail; the original code was restored before the final suite.
 
 ## Measurements
 
-Nen 0.2.6 release executable: 31,927,808 bytes (30.45 MiB), including its local wallpaper.
+Nen 0.2.7 release executable: 32,000,000 bytes (30.52 MiB), including its local wallpaper.
 The performance samples below were collected with 0.2.0.
 
 | Measurement | Result |

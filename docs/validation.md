@@ -18,7 +18,10 @@ toolchain. The executable uses native GPUI rendering, not a browser.
   [results](screenshots/results.png), [editor](screenshots/note.png),
   [reminder](screenshots/reminder.png) and [appearance](screenshots/settings.png).
 - Normal Windows launches and restored sessions were checked for callback errors.
-- Packaged Still 0.2.4 starts and flushes a graceful shutdown with a clean release log.
+- Packaged Still 0.2.5 starts and flushes a graceful shutdown with a clean release log.
+
+The 0.2.5 asset check verifies Regular artwork for plus, minus, close,
+maximize and restore controls, while other icons keep Fill artwork.
 
 The 0.2.4 GPUI check switches every dropdown entry using Ctrl+Shift+1–9,
 including a user-created category. It checks an out-of-range number, preserves
@@ -41,7 +44,7 @@ normal editor with [28px text](screenshots/font-large.png). Blank-draft checks
 verify no initial SQLite row, queued autosave deletion, no reopen history,
 quiet disposal and preservation of title-only/body-only notes after restart.
 Asset checks verify all application and window-control icons use local
-Phosphor Fill artwork.
+Phosphor artwork, with the control-symbol exceptions introduced in 0.2.5.
 
 The 0.2.1 Dim fix anchors the tint to the image bounds and removes the hidden
 58%/65% minimum. A GPUI regression test clicks the actual slider and verifies
@@ -75,7 +78,7 @@ fail; the original code was restored before the final suite.
 
 ## Measurements
 
-Still 0.2.4 release executable: 31,093,760 bytes (29.65 MiB), including its local wallpaper.
+Still 0.2.5 release executable: 31,093,760 bytes (29.65 MiB), including its local wallpaper.
 The performance samples below were collected with 0.2.0.
 
 | Measurement | Result |

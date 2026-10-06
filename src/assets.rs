@@ -1,7 +1,7 @@
 use gpui_kit::{AssetSource, SharedString};
 use std::borrow::Cow;
 
-/// Local Phosphor Fill artwork, including icons drawn by GPUI's controls.
+/// Local Phosphor artwork, with line-style symbols for editing and window controls.
 pub struct StillAssets;
 
 impl AssetSource for StillAssets {
@@ -14,13 +14,21 @@ impl AssetSource for StillAssets {
                 ))
             };
         }
+        macro_rules! regular {
+            ($name:literal) => {
+                Some(Cow::Borrowed(
+                    include_bytes!(concat!("../assets/phosphor-regular/", $name, ".svg"))
+                        .as_slice(),
+                ))
+            };
+        }
         let data = match path {
             "icons/bell.svg" => icon!("bell"),
             "icons/pin.svg" => icon!("push-pin"),
-            "icons/plus.svg" => icon!("plus"),
+            "icons/plus.svg" => regular!("plus"),
             "icons/search.svg" => icon!("magnifying-glass"),
             "icons/settings.svg" => icon!("gear"),
-            "icons/x.svg" | "icons/window-close.svg" => icon!("x"),
+            "icons/x.svg" | "icons/window-close.svg" => regular!("x"),
             "icons/panel-left.svg" => icon!("sidebar-simple"),
             "icons/chevron-down.svg" => icon!("caret-down"),
             "icons/chevron-up.svg" => icon!("caret-up"),
@@ -40,9 +48,9 @@ impl AssetSource for StillAssets {
             "icons/app-window.svg" => icon!("app-window"),
             "icons/keyboard.svg" => icon!("keyboard"),
             "icons/sliders-horizontal.svg" => icon!("sliders-horizontal"),
-            "icons/window-minimize.svg" | "icons/minus.svg" => icon!("minus"),
-            "icons/window-maximize.svg" => icon!("square"),
-            "icons/window-restore.svg" => icon!("copy-simple"),
+            "icons/window-minimize.svg" | "icons/minus.svg" => regular!("minus"),
+            "icons/window-maximize.svg" => regular!("square"),
+            "icons/window-restore.svg" => regular!("copy-simple"),
             "icons/eye.svg" => icon!("eye"),
             "icons/eye-off.svg" => icon!("eye-slash"),
             "icons/loader.svg" | "icons/loader-circle.svg" => icon!("circle-notch"),

@@ -2,7 +2,7 @@ use gpui_kit::{AssetSource, assets::IconName};
 use still::assets::StillAssets;
 
 #[test]
-fn application_icons_use_the_embedded_phosphor_fill_artwork() {
+fn application_icons_use_the_embedded_phosphor_artwork() {
     for icon in [
         IconName::Bell,
         IconName::Pin,
@@ -35,17 +35,45 @@ fn application_icons_use_the_embedded_phosphor_fill_artwork() {
             "{path} must use Phosphor artwork"
         );
     }
-    for path in [
-        "icons/window-minimize.svg",
-        "icons/window-maximize.svg",
-        "icons/window-restore.svg",
-        "icons/window-close.svg",
+    for (path, expected) in [
+        (
+            "icons/plus.svg",
+            include_bytes!("../assets/phosphor-regular/plus.svg").as_slice(),
+        ),
+        (
+            "icons/minus.svg",
+            include_bytes!("../assets/phosphor-regular/minus.svg").as_slice(),
+        ),
+        (
+            "icons/x.svg",
+            include_bytes!("../assets/phosphor-regular/x.svg").as_slice(),
+        ),
+        (
+            "icons/window-minimize.svg",
+            include_bytes!("../assets/phosphor-regular/minus.svg").as_slice(),
+        ),
+        (
+            "icons/window-maximize.svg",
+            include_bytes!("../assets/phosphor-regular/square.svg").as_slice(),
+        ),
+        (
+            "icons/window-restore.svg",
+            include_bytes!("../assets/phosphor-regular/copy-simple.svg").as_slice(),
+        ),
+        (
+            "icons/window-close.svg",
+            include_bytes!("../assets/phosphor-regular/x.svg").as_slice(),
+        ),
+        (
+            "icons/bell.svg",
+            include_bytes!("../assets/phosphor-fill/bell-fill.svg").as_slice(),
+        ),
     ] {
         let data = StillAssets.load(path).expect("window icon").expect("icon");
-        assert!(
-            std::str::from_utf8(&data)
-                .expect("SVG")
-                .contains("0 0 256 256")
+        assert_eq!(
+            data.as_ref(),
+            expected,
+            "{path} must use its intended weight"
         );
     }
 }

@@ -70,7 +70,8 @@ floating states, then hides the compact bar. Shortcuts are editable under
 Category numbers follow the dropdown order, including All Notes, Pinned,
 your categories, Reminders and Archive. Numbers without an entry do nothing.
 Ctrl+, opens settings; pressing it again returns to the editor. Preferences use
-left-aligned groups and locally embedded Phosphor Fill icons. The editor font
+left-aligned groups and locally embedded Phosphor icons. Plus, close and window
+controls use Regular artwork; other application icons use Fill. The editor font
 slider includes a live preview and applies to open notes immediately.
 
 ## Build requirements

@@ -14,8 +14,9 @@ try {
     [void]$text.AppendLine('Still: resolved Rust dependency notices (including build/test dependencies).')
     [void]$text.AppendLine('Unmodified source releases are available at the linked crate pages.')
     [void]$text.AppendLine()
-    [void]$text.AppendLine('Phosphor Icons: Fill SVG artwork, embedded locally.')
+    [void]$text.AppendLine('Phosphor Icons: Fill and Regular SVG artwork, embedded locally.')
     [void]$text.AppendLine([IO.File]::ReadAllText((Join-Path $projectRoot 'assets/phosphor-fill/SOURCE.md')))
+    [void]$text.AppendLine([IO.File]::ReadAllText((Join-Path $projectRoot 'assets/phosphor-regular/SOURCE.md')))
     [void]$text.AppendLine([IO.File]::ReadAllText((Join-Path $projectRoot 'assets/phosphor-fill/LICENSE')))
     foreach ($package in $packages) {
         [void]$text.AppendLine()

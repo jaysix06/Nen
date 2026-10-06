@@ -194,7 +194,7 @@ impl FloatingWindow {
         });
     }
     fn key(&mut self, key: &Keystroke, window: &mut Window, cx: &mut Context<Self>) {
-        let binding = key.to_string().to_ascii_lowercase();
+        let binding = crate::platform::shortcut_string(key, cx);
         let command = self
             .state
             .read(cx)

@@ -5,7 +5,7 @@ toolchain. The executable uses native GPUI rendering, not a browser.
 
 ## Checks
 
-- `cargo test --locked --features ui-testing`: 31 passing tests.
+- `cargo test --locked --features ui-testing`: 32 passing tests.
 - `cargo clippy --locked --features ui-testing --all-targets -- -D warnings`: clean.
 - `cargo fmt -- --check`: clean.
 - `cargo build --locked --release`: successful; UI testing features excluded.
@@ -18,7 +18,15 @@ toolchain. The executable uses native GPUI rendering, not a browser.
   [results](screenshots/results.png), [editor](screenshots/note.png),
   [reminder](screenshots/reminder.png) and [appearance](screenshots/settings.png).
 - Normal Windows launches and restored sessions were checked for callback errors.
-- Packaged Still 0.2.3 starts and flushes a graceful shutdown with a clean release log.
+- Packaged Still 0.2.4 starts and flushes a graceful shutdown with a clean release log.
+
+The 0.2.4 GPUI check switches every dropdown entry using Ctrl+Shift+1–9,
+including a user-created category. It checks an out-of-range number, preserves
+an existing conflicting binding on upgrade, captures a replacement shortcut,
+reports conflicts, applies the replacement immediately and verifies persistence.
+The native Windows capture check dispatches the real keyboard mapper's shifted
+digit events through all nine bindings. GPUI's physical key representation is
+used for shortcut capture and matching, including shifted symbols.
 
 The 0.2.3 note rows span the full notes pane. GPUI checks verify identical row
 edges for short and long titles and selection by clicking near the right edge.
@@ -67,7 +75,7 @@ fail; the original code was restored before the final suite.
 
 ## Measurements
 
-Still 0.2.3 release executable: 31,092,736 bytes (29.65 MiB), including its local wallpaper.
+Still 0.2.4 release executable: 31,093,760 bytes (29.65 MiB), including its local wallpaper.
 The performance samples below were collected with 0.2.0.
 
 | Measurement | Result |

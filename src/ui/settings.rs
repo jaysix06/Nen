@@ -197,7 +197,7 @@ impl SettingsView {
         if !key.modifiers.modified() && !function_key {
             return;
         }
-        let binding = key.to_string().to_ascii_lowercase();
+        let binding = crate::platform::shortcut_string(key, cx);
         self.state.update(cx, |state, cx| {
             match set_binding(state, &action, &binding) {
                 Ok(()) => {
@@ -368,6 +368,9 @@ pub fn set_binding(state: &mut AppState, action: &str, binding: &str) -> Result<
     Ok(())
 }
 pub fn action_label(action: &str) -> String {
+    if let Some(index) = action.strip_prefix("category_") {
+        return format!("Select category {index}");
+    }
     if let Some(index) = action.strip_prefix("tab_") {
         return format!("Switch to tab {index}");
     }

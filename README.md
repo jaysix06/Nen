@@ -53,6 +53,7 @@ Background transformations are cached between launches.
 | Close / reopen tab | Ctrl+W / Ctrl+Shift+T |
 | Next / previous tab | Ctrl+Tab / Ctrl+Shift+Tab |
 | Select tab | Ctrl+1 through Ctrl+9 |
+| Select category | Ctrl+Shift+1 through Ctrl+Shift+9 |
 | Find in note | Ctrl+F |
 | Search notes | Ctrl+Shift+F |
 | Toggle notes sidebar | Ctrl+B |
@@ -66,6 +67,8 @@ Background transformations are cached between launches.
 Use Up/Down and Enter in search to open results. Escape backs out through the
 floating states, then hides the compact bar. Shortcuts are editable under
 **Settings → Shortcuts**.
+Category numbers follow the dropdown order, including All Notes, Pinned,
+your categories, Reminders and Archive. Numbers without an entry do nothing.
 Ctrl+, opens settings; pressing it again returns to the editor. Preferences use
 left-aligned groups and locally embedded Phosphor Fill icons. The editor font
 slider includes a live preview and applies to open notes immediately.

@@ -193,6 +193,57 @@ fn run() -> anyhow::Result<()> {
                                     .timer(std::time::Duration::from_millis(80))
                                     .await;
                             }
+                            if std::env::args().any(|arg| arg == "--check-category-shortcuts") {
+                                let expected = [
+                                    "All notes",
+                                    "Pinned",
+                                    "Personal",
+                                    "Work",
+                                    "Ideas",
+                                    "Reminders",
+                                    "Archive",
+                                    "Archive",
+                                    "Archive",
+                                ];
+                                for (index, expected) in expected.iter().enumerate() {
+                                    target
+                                        .update(cx, |_, window, cx| {
+                                            // Feed the event representation produced by the actual
+                                            // Windows keyboard mapper, including shifted digit symbols.
+                                            let key = gpui_kit::Keystroke::parse(&format!(
+                                                "ctrl-shift-{}",
+                                                index + 1
+                                            ))
+                                            .expect("test shortcut");
+                                            let event = cx
+                                                .keyboard_mapper()
+                                                .map_key_equivalent(key, false)
+                                                .inner()
+                                                .clone();
+                                            window.dispatch_keystroke(event, cx);
+                                        })
+                                        .expect("native keyboard check");
+                                    assert_eq!(
+                                        capture_state.read_with(cx, |state, _| state
+                                            .category_label()
+                                            .to_owned()),
+                                        *expected
+                                    );
+                                }
+                                target
+                                    .update(cx, |_, window, cx| {
+                                        let key = gpui_kit::Keystroke::parse("ctrl-shift-4")
+                                            .expect("test shortcut");
+                                        let event = cx
+                                            .keyboard_mapper()
+                                            .map_key_equivalent(key, false)
+                                            .inner()
+                                            .clone();
+                                        window.dispatch_keystroke(event, cx);
+                                    })
+                                    .expect("restore Work category");
+                                eprintln!("Native numeric category shortcuts verified");
+                            }
                             if std::env::args().any(|arg| {
                                 arg == "--capture-categories" || arg == "--capture-category-form"
                             }) {

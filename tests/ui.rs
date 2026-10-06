@@ -10,6 +10,135 @@ use still::{
 };
 
 #[gpui_kit::test]
+fn category_shortcuts_follow_the_dropdown_and_can_be_remapped(cx: &mut TestAppContext) {
+    cx.dispatcher.allow_parking();
+    let path = std::env::temp_dir().join(format!(
+        "still-category-keys-{}.sqlite",
+        uuid::Uuid::new_v4()
+    ));
+    {
+        let db = Database::open(&path).expect("database");
+        db.save_category("studio", "Studio")
+            .expect("extra category");
+    }
+    let (store, mut settings, session, _) = Store::start(path.clone()).expect("worker");
+    // Existing installations gain the new defaults without replacing a user's binding.
+    settings
+        .shortcuts
+        .retain(|action, _| !action.starts_with("category_"));
+    settings
+        .shortcuts
+        .insert("pin".into(), "ctrl-shift-9".into());
+    settings.reduced_motion = true;
+    settings.default_wallpaper = false;
+    cx.update(gpui_kit::init);
+    let state = cx.new(|cx| AppState::new(store.clone(), settings, session, cx));
+    let (handle, _) = cx.update(|cx| {
+        gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+            cx.new(|cx| AppWindow::new(state.clone(), window, cx))
+        })
+        .expect("window")
+    });
+    store
+        .request(Request::Categories)
+        .recv_blocking()
+        .expect("barrier")
+        .expect("categories");
+    cx.run_until_parked();
+    assert!(state.read_with(
+        cx,
+        |state, _| state.settings.shortcuts["category_9"].is_empty()
+            && state.settings.shortcuts["pin"] == "ctrl-shift-9"
+    ));
+    for (index, label) in [
+        "All notes",
+        "Pinned",
+        "Personal",
+        "Work",
+        "Ideas",
+        "Studio",
+        "Reminders",
+        "Archive",
+    ]
+    .iter()
+    .enumerate()
+    {
+        cx.simulate_keystrokes(handle, &format!("ctrl-shift-{}", index + 1));
+        cx.run_until_parked();
+        assert_eq!(
+            state.read_with(cx, |state, _| state.category_label().to_owned()),
+            *label
+        );
+    }
+    state.update(cx, |state, cx| state.select_category_number(99, cx));
+    assert_eq!(
+        state.read_with(cx, |state, _| state.category_label().to_owned()),
+        "Archive"
+    );
+    cx.simulate_keystrokes(handle, "ctrl-,");
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("Shortcuts", cx);
+        window.render_frame(cx);
+        window.click("shortcut-category_4", cx);
+    })
+    .expect("capture category shortcut");
+    cx.simulate_keystrokes(handle, "ctrl-shift-3");
+    cx.run_until_parked();
+    assert!(state.read_with(cx, |state, _| {
+        state
+            .error
+            .as_ref()
+            .is_some_and(|error| error.contains("Select category 3"))
+    }));
+    cx.simulate_keystrokes(handle, "ctrl-alt-shift-4");
+    cx.run_until_parked();
+    assert_eq!(
+        state.read_with(cx, |state, _| state.settings.shortcuts["category_4"]
+            .clone()),
+        "ctrl-alt-shift-4"
+    );
+    assert!(state.read_with(cx, |state, _| state.shortcut_capture.is_none()));
+    cx.simulate_keystrokes(handle, "ctrl-,");
+    cx.run_until_parked();
+    cx.simulate_keystrokes(handle, "ctrl-shift-4");
+    cx.run_until_parked();
+    assert_eq!(
+        state.read_with(cx, |state, _| state.category_label().to_owned()),
+        "Archive"
+    );
+    cx.simulate_keystrokes(handle, "ctrl-alt-shift-4");
+    cx.run_until_parked();
+    assert_eq!(
+        state.read_with(cx, |state, _| state.category_label().to_owned()),
+        "Work"
+    );
+    state.update(cx, |state, cx| state.quit(cx));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        cx.run_until_parked();
+        if !matches!(
+            store.request(Request::Categories).recv_blocking(),
+            Ok(Ok(_))
+        ) {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "shutdown timed out");
+        std::thread::yield_now();
+    }
+    let db = Database::open(&path).expect("reopen");
+    assert_eq!(
+        db.get_setting::<Settings>("settings")
+            .expect("preferences")
+            .shortcuts["category_4"],
+        "ctrl-alt-shift-4"
+    );
+    drop(db);
+    std::fs::remove_file(path).expect("cleanup");
+}
+
+#[gpui_kit::test]
 fn short_and_long_notes_fill_the_sidebar_and_accept_edge_clicks(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
     let path =

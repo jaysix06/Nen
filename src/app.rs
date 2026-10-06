@@ -84,6 +84,11 @@ impl AppState {
             }
             settings.design_revision = 2;
         }
+        for binding in settings.shortcuts.values_mut() {
+            if let Ok(key) = Keystroke::parse(binding) {
+                *binding = crate::platform::shortcut_string(&key, cx);
+            }
+        }
         for (action, binding) in default_shortcuts() {
             if !settings.shortcuts.contains_key(&action) {
                 let available = !settings.shortcuts.values().any(|value| value == &binding);
@@ -358,6 +363,28 @@ impl AppState {
         self.session.category_id = Some(id.into());
         self.refresh(cx);
         self.save_session(cx);
+    }
+
+    pub fn select_category_number(&mut self, number: usize, cx: &mut Context<Self>) {
+        let Some(index) = number.checked_sub(1) else {
+            return;
+        };
+        // Match the selectable dropdown entries, ignoring separators.
+        let target = [(None, Collection::All), (None, Collection::Pinned)]
+            .into_iter()
+            .chain(
+                self.categories
+                    .iter()
+                    .map(|category| (Some(category.id.as_str()), Collection::All)),
+            )
+            .chain([(None, Collection::Reminders), (None, Collection::Archive)])
+            .nth(index)
+            .map(|(id, collection)| (id.map(str::to_owned), collection));
+        match target {
+            Some((Some(id), _)) => self.select_category(&id, cx),
+            Some((None, collection)) => self.navigate(collection, cx),
+            None => {}
+        }
     }
 
     pub fn save_category(&mut self, id: String, name: String, cx: &mut Context<Self>) {

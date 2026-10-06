@@ -219,6 +219,15 @@ impl AppWindow {
                     });
                 }
             }
+            command if command.starts_with("category_") => {
+                if let Some(number) = command
+                    .strip_prefix("category_")
+                    .and_then(|n| n.parse::<usize>().ok())
+                {
+                    self.state
+                        .update(cx, |state, cx| state.select_category_number(number, cx));
+                }
+            }
             command if command.starts_with("tab_") => {
                 if let Some(index) = command
                     .strip_prefix("tab_")
@@ -287,7 +296,7 @@ impl AppWindow {
                 _ => {}
             }
         }
-        let shortcut = keystroke.to_string().to_ascii_lowercase();
+        let shortcut = crate::platform::shortcut_string(keystroke, cx);
         let command = self
             .state
             .read(cx)

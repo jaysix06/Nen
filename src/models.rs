@@ -278,6 +278,7 @@ pub fn default_shortcuts() -> std::collections::BTreeMap<String, String> {
     .collect();
     for index in 1..=9 {
         bindings.insert(format!("tab_{index}"), format!("ctrl-{index}"));
+        bindings.insert(format!("category_{index}"), format!("ctrl-shift-{index}"));
     }
     bindings
 }

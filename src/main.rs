@@ -36,7 +36,7 @@ fn run() -> anyhow::Result<()> {
     }
     let (store, settings, session, events) = Store::start(directory.join("notes.sqlite"))?;
     gpui_kit::application()
-        .with_assets(gpui_kit::assets::AllAssets)
+        .with_assets(still::assets::StillAssets)
         .run(move |cx| {
             gpui_kit::init(cx);
             theme::apply(&settings, cx);
@@ -109,6 +109,13 @@ fn run() -> anyhow::Result<()> {
                                         "Dark"
                                     }
                                     .into();
+                                if let Some(font) = std::env::args()
+                                    .skip_while(|arg| arg != "--capture-font")
+                                    .nth(1)
+                                    .and_then(|value| value.parse::<f32>().ok())
+                                {
+                                    settings.editor_font_size = font.clamp(12., 30.);
+                                }
                                 state.update_settings(settings, cx);
                                 if std::env::args().any(|arg| arg == "--capture-settings") {
                                     state.settings_page = Some("Appearance".into());
@@ -168,7 +175,7 @@ fn run() -> anyhow::Result<()> {
                                     .await;
                             }
                             cx.background_executor()
-                                .timer(std::time::Duration::from_millis(400))
+                                .timer(std::time::Duration::from_millis(800))
                                 .await;
                             let target = if floating {
                                 capture_state

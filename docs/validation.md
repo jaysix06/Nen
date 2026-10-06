@@ -5,7 +5,7 @@ toolchain. The executable uses native GPUI rendering, not a browser.
 
 ## Checks
 
-- `cargo test --locked --features ui-testing`: 27 passing tests.
+- `cargo test --locked --features ui-testing`: 30 passing tests.
 - `cargo clippy --locked --features ui-testing --all-targets -- -D warnings`: clean.
 - `cargo fmt -- --check`: clean.
 - `cargo build --locked --release`: successful; UI testing features excluded.
@@ -18,7 +18,16 @@ toolchain. The executable uses native GPUI rendering, not a browser.
   [results](screenshots/results.png), [editor](screenshots/note.png),
   [reminder](screenshots/reminder.png) and [appearance](screenshots/settings.png).
 - Normal Windows launches and restored sessions were checked for callback errors.
-- Packaged Still 0.2.1 starts and flushes a graceful shutdown with a clean release log.
+- Packaged Still 0.2.2 starts and flushes a graceful shutdown with a clean release log.
+
+The 0.2.2 GPUI checks exercise the relocated category picker, left-aligned
+preferences labels, the actual font slider and rendered line height, repeated
+Ctrl+, toggles and typing after focus returns. Native captures compare the
+normal editor with [28px text](screenshots/font-large.png). Blank-draft checks
+verify no initial SQLite row, queued autosave deletion, no reopen history,
+quiet disposal and preservation of title-only/body-only notes after restart.
+Asset checks verify all application and window-control icons use local
+Phosphor Fill artwork.
 
 The 0.2.1 Dim fix anchors the tint to the image bounds and removes the hidden
 58%/65% minimum. A GPUI regression test clicks the actual slider and verifies
@@ -52,7 +61,7 @@ fail; the original code was restored before the final suite.
 
 ## Measurements
 
-Still 0.2.1 release executable: 31,056,384 bytes (29.62 MiB), including its local wallpaper.
+Still 0.2.2 release executable: 31,089,664 bytes (29.65 MiB), including its local wallpaper.
 The performance samples below were collected with 0.2.0.
 
 | Measurement | Result |

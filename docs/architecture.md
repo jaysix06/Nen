@@ -53,7 +53,7 @@ old registration if a new combination is unavailable.
 ## Design
 
 The interface uses Segoe UI, dark neutral surfaces, a quiet green accent and
-compact square-edged tabs. A category popover sits in the integrated titlebar;
+compact square-edged tabs. A category popover sits in the notes pane header;
 the left pane contains actual notes. GPUI's native window-control hit regions
 handle dragging, minimizing, maximizing and closing. Interactive titlebar
 controls occlude the parent drag region. The notes pane opens and closes through
@@ -67,6 +67,19 @@ Contrast checks cover editor text and secondary text across
 Light/Dark and Opaque/Frosted/Clear combinations. Editor text is larger than
 interface text. Hairline separators divide functional regions; settings use
 compact rows. Settled motion requests no frames.
+
+Preferences navigation uses left-aligned icon/label rows grouped into App,
+Personalization and Controls. Ctrl+, toggles preferences and restores editor
+focus. Font changes invalidate each open editor's text entity, rebuilding
+glyphs, wrapping and caret geometry. Phosphor Fill SVG assets are embedded
+locally and override the icons used by application and native window controls.
+Their source revision and MIT license are included in the package notices.
+
+New blank notes remain in memory until edited or given meaningful metadata.
+Closing a blank draft cancels its debounce and queues deletion behind any
+already submitted writes. It is removed from reopen history only after storage
+acknowledges deletion. Notes with content, a title, a pin, archive status or
+reminders retain normal save/close behavior.
 
 The native shell and visual hierarchy were informed by
 [Zeron](https://github.com/zeronsh/zeron), without copying its implementation.

@@ -17,6 +17,7 @@ pub struct NoteEditor {
     pub body: Entity<TextareaState>,
     pub compact: bool,
     reading: bool,
+    font_size: f32,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -34,6 +35,7 @@ impl NoteEditor {
                 .searchable(true)
         });
         let mut view = Self {
+            font_size: state.read(cx).settings.editor_font_size,
             state: state.clone(),
             id,
             title: title.clone(),
@@ -64,6 +66,13 @@ impl NoteEditor {
     }
 
     fn sync(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let font_size = self.state.read(cx).settings.editor_font_size;
+        if self.font_size != font_size {
+            self.font_size = font_size;
+            // Invalidate the text entity too, so native cached frames rebuild
+            // glyphs, wrapping and the caret when its inherited size changes.
+            self.body.update(cx, |_, cx| cx.notify());
+        }
         if let Some(buffer) = self.state.read(cx).notes.get(&self.id) {
             let title = buffer.note.title.clone();
             let content = buffer.note.content.clone();
@@ -199,7 +208,7 @@ impl Render for NoteEditor {
         let dirty = buffer.revision != buffer.saved_revision;
         let save_failed = buffer.save_failed;
         let words = note.content.split_whitespace().count();
-        let size = app.settings.editor_font_size;
+        let size = self.font_size;
         let reminder = app
             .reminders
             .iter()

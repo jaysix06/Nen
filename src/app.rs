@@ -551,7 +551,6 @@ impl AppState {
         if floating {
             self.floating_note = Some(id.clone());
         }
-        self.save_now(&id, cx);
         id
     }
 
@@ -627,6 +626,16 @@ impl AppState {
     }
 
     pub fn close_tab(&mut self, id: &str, cx: &mut Context<Self>) {
+        if self.notes.get(id).is_some_and(|buffer| {
+            buffer.note.title.trim().is_empty()
+                && buffer.note.content.trim().is_empty()
+                && !buffer.note.is_pinned
+                && !buffer.note.is_archived
+        }) && !self.reminders.iter().any(|reminder| reminder.note_id == id)
+        {
+            self.remove_note(id, false, cx);
+            return;
+        }
         self.save_now(id, cx);
         if let Some(index) = self.session.tabs.iter().position(|tab| tab == id) {
             self.session.tabs.remove(index);
@@ -802,6 +811,10 @@ impl AppState {
     }
 
     pub fn delete(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.remove_note(id, true, cx);
+    }
+
+    fn remove_note(&mut self, id: &str, announce: bool, cx: &mut Context<Self>) {
         if !self.deleting.insert(id.into()) {
             return;
         }
@@ -826,7 +839,9 @@ impl AppState {
                         state.save_session(cx);
                         state.refresh(cx);
                         state.refresh_reminders(cx);
-                        state.toast("Note deleted", cx);
+                        if announce {
+                            state.toast("Note deleted", cx);
+                        }
                     }
                     Ok(Err(error)) => {
                         state.deleting.remove(&id);

@@ -10,6 +10,210 @@ use still::{
 };
 
 #[gpui_kit::test]
+fn closing_empty_drafts_discards_them_without_reopening_or_late_saves(cx: &mut TestAppContext) {
+    cx.dispatcher.allow_parking();
+    let path = std::env::temp_dir().join(format!("still-empty-{}.sqlite", uuid::Uuid::new_v4()));
+    let (store, _, _, _) = Store::start(path.clone()).expect("worker");
+    cx.update(gpui_kit::init);
+    let state = cx.new(|cx| {
+        AppState::new(
+            store.clone(),
+            Settings {
+                default_wallpaper: false,
+                reduced_motion: true,
+                ..Settings::default()
+            },
+            Session::default(),
+            cx,
+        )
+    });
+    let (handle, _) = cx.update(|cx| {
+        gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+            cx.new(|cx| AppWindow::new(state.clone(), window, cx))
+        })
+        .expect("window")
+    });
+    for whitespace in [false, true] {
+        cx.simulate_keystrokes(handle, "ctrl-n");
+        cx.run_until_parked();
+        let id = state
+            .read_with(cx, |state, _| state.session.active.clone())
+            .expect("draft");
+        assert!(matches!(
+            store
+                .request(Request::Load(id.clone()))
+                .recv_blocking()
+                .expect("draft barrier")
+                .expect("draft query"),
+            still::storage::Response::Note(None)
+        ));
+        if whitespace {
+            state.update(cx, |state, cx| {
+                state.edit(&id, "  ".into(), "\n\t".into(), cx);
+                state.save_now(&id, cx);
+            });
+        }
+        cx.simulate_keystrokes(handle, "ctrl-w");
+        store
+            .request(Request::Load(id.clone()))
+            .recv_blocking()
+            .expect("delete barrier")
+            .expect("deleted");
+        cx.run_until_parked();
+        state.update(cx, |state, cx| state.save_now(&id, cx));
+        cx.simulate_keystrokes(handle, "ctrl-shift-t");
+        cx.run_until_parked();
+        assert!(state.read_with(cx, |state, _| state.session.tabs.is_empty()
+            && !state.notes.contains_key(&id)
+            && state.closed_tabs.is_empty()
+            && state.message.is_none()));
+    }
+    for (title, content) in [("Title only", ""), ("", "Body only")] {
+        let id = state.update(cx, |state, cx| {
+            let id = state.create_note(false, cx);
+            state.edit(&id, title.into(), content.into(), cx);
+            state.close_tab(&id, cx);
+            id
+        });
+        assert!(matches!(
+            store
+                .request(Request::Load(id))
+                .recv_blocking()
+                .expect("save barrier")
+                .expect("load"),
+            still::storage::Response::Note(Some(_))
+        ));
+        cx.run_until_parked();
+    }
+    store
+        .request(Request::Shutdown)
+        .recv_blocking()
+        .expect("shutdown")
+        .expect("flush");
+    let database = Database::open(&path).expect("reopen");
+    assert_eq!(
+        database
+            .list(still::models::Collection::All, "")
+            .expect("list")
+            .len(),
+        2
+    );
+    drop(database);
+    std::fs::remove_file(path).expect("cleanup");
+}
+
+#[gpui_kit::test]
+fn editor_font_slider_changes_rendered_text_size(cx: &mut TestAppContext) {
+    cx.dispatcher.allow_parking();
+    let path = std::env::temp_dir().join(format!("still-font-{}.sqlite", uuid::Uuid::new_v4()));
+    let id = {
+        let database = Database::open(&path).expect("database");
+        let mut note = still::models::Note::new(still::models::NoteType::Normal);
+        note.title = "Font test".into();
+        note.content = "First line\nSecond line".into();
+        database.save_note(&note).expect("note");
+        note.id
+    };
+    let (store, _, _, _) = Store::start(path.clone()).expect("worker");
+    let settings = Settings {
+        default_wallpaper: false,
+        reduced_motion: true,
+        editor_font_size: 14.,
+        ..Settings::default()
+    };
+    let session = Session {
+        tabs: vec![id.clone()],
+        active: Some(id.clone()),
+        ..Session::default()
+    };
+    cx.update(gpui_kit::init);
+    cx.update(|cx| still::theme::apply(&settings, cx));
+    let state = cx.new(|cx| AppState::new(store.clone(), settings, session, cx));
+    let (handle, root) = cx.update(|cx| {
+        gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+            cx.new(|cx| AppWindow::new(state.clone(), window, cx))
+        })
+        .expect("window")
+    });
+    store
+        .request(Request::Categories)
+        .recv_blocking()
+        .expect("load barrier")
+        .expect("categories");
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(
+            window
+                .within("notes-header")
+                .find("category-picker")
+                .visible()
+        );
+    })
+    .expect("editor frame");
+    let body = root.read_with(cx, |root, cx| root.editors[&id].read(cx).body.clone());
+    let before = body.read_with(cx, |body, _| {
+        body.line_height().expect("initial text layout")
+    });
+    cx.simulate_keystrokes(handle, "ctrl-,");
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("Appearance", cx);
+        window.render_frame(cx);
+        let row = window.find("settings-nav-Appearance").bounds();
+        let label = window.find("settings-nav-label-Appearance").bounds();
+        assert!(
+            label.left() - row.left() <= gpui_kit::px(28.),
+            "Preferences labels must be left aligned"
+        );
+        window.click_at(
+            "settings-slider-font",
+            gpui_kit::point(gpui_kit::px(155.), gpui_kit::px(8.)),
+            cx,
+        );
+    })
+    .expect("change font slider");
+    cx.run_until_parked();
+    assert!(state.read_with(cx, |state, _| state.settings.editor_font_size) > 24.);
+    cx.simulate_keystrokes(handle, "ctrl-,");
+    cx.run_until_parked();
+    assert!(state.read_with(cx, |state, _| state.settings_page.is_none()));
+    cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+        .expect("updated editor frame");
+    let after = body.read_with(cx, |body, _| {
+        body.line_height().expect("updated text layout")
+    });
+    assert!(
+        after > before * 1.5,
+        "Font size must change rendered text: {before:?} -> {after:?}"
+    );
+    cx.update_window(handle, |_, window, cx| {
+        window.input("Continued writing.", cx)
+    })
+    .expect("focus returns to the editor");
+    cx.run_until_parked();
+    assert!(state.read_with(cx, |state, _| {
+        state.notes[&id].note.content.contains("Continued writing.")
+    }));
+    cx.simulate_keystrokes(handle, "ctrl-,");
+    cx.run_until_parked();
+    assert_eq!(
+        state.read_with(cx, |state, _| state.settings_page.clone()),
+        Some("General".into())
+    );
+    cx.simulate_keystrokes(handle, "ctrl-,");
+    cx.run_until_parked();
+    assert!(state.read_with(cx, |state, _| state.settings_page.is_none()));
+    store
+        .request(Request::Shutdown)
+        .recv_blocking()
+        .expect("shutdown")
+        .expect("flush");
+    std::fs::remove_file(path).expect("cleanup");
+}
+
+#[gpui_kit::test]
 fn dim_slider_changes_tint_and_overlay_covers_the_image(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
     let path = std::env::temp_dir().join(format!("still-dim-{}.sqlite", uuid::Uuid::new_v4()));
@@ -257,6 +461,9 @@ fn category_creation_moves_and_sidebar_visibility_survive_restart(cx: &mut TestA
     cx.simulate_keystrokes(window, "ctrl-b");
     cx.run_until_parked();
     assert!(state.read_with(cx, |state, _| state.session.sidebar_hidden));
+    // Categories now live inside the notes pane; reveal it to use the picker.
+    cx.simulate_keystrokes(window, "ctrl-b");
+    cx.run_until_parked();
     state.update(cx, |state, cx| {
         state.edit(
             &id,
@@ -309,6 +516,8 @@ fn category_creation_moves_and_sidebar_visibility_survive_restart(cx: &mut TestA
         state.read_with(cx, |state, _| state.notes[&id].note.category_id.clone()),
         None
     );
+    cx.simulate_keystrokes(window, "ctrl-b");
+    cx.run_until_parked();
     state.update(cx, |state, cx| state.quit(cx));
     // The real SQLite worker wakes GPUI asynchronously. Drain that handoff
     // until graceful shutdown releases its handles, rather than assuming one
@@ -462,6 +671,13 @@ fn keyboard_creation_typing_and_reopening_tabs(cx: &mut TestAppContext) {
     cx.simulate_keystrokes(handle, "ctrl-n");
     cx.run_until_parked();
     assert_eq!(state.read_with(cx, |state, _| state.session.tabs.len()), 2);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("note-title", cx);
+        window.input("Keep this tab", cx);
+    })
+    .expect("second note has content to reopen");
+    cx.run_until_parked();
     cx.simulate_keystrokes(handle, "ctrl-w");
     cx.run_until_parked();
     assert_eq!(state.read_with(cx, |state, _| state.session.tabs.len()), 1);

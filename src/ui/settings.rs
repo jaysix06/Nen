@@ -10,14 +10,29 @@ use gpui_kit::component::{
 use gpui_kit::{assets::IconName, prelude::FluentBuilder, *};
 use std::collections::HashMap;
 
-pub const SECTIONS: [&str; 7] = [
-    "General",
-    "Appearance",
-    "Background",
-    "Floating bar",
-    "Reminders",
-    "Shortcuts",
-    "Advanced",
+const NAVIGATION: [(&str, &[(&str, IconName)]); 3] = [
+    (
+        "App",
+        &[
+            ("General", IconName::Settings),
+            ("Reminders", IconName::Bell),
+        ],
+    ),
+    (
+        "Personalization",
+        &[
+            ("Appearance", IconName::Palette),
+            ("Background", IconName::Image),
+            ("Floating bar", IconName::AppWindow),
+        ],
+    ),
+    (
+        "Controls",
+        &[
+            ("Shortcuts", IconName::Keyboard),
+            ("Advanced", IconName::SlidersHorizontal),
+        ],
+    ),
 ];
 pub struct SettingsView {
     state: Entity<AppState>,
@@ -294,7 +309,7 @@ impl SettingsView {
                 .flex()
                 .items_center()
                 .gap_4()
-                .w(px(220.))
+                .w(px(if key == "font" { 292. } else { 220. }))
                 .child(Slider::new(slider).flex_1())
                 .child(
                     div()
@@ -306,7 +321,22 @@ impl SettingsView {
                         } else {
                             format!("{:.0}%", value * 100.)
                         }),
-                ),
+                )
+                .when(key == "font", |view| {
+                    view.child(
+                        div()
+                            .id("editor-font-preview")
+                            .test_support()
+                            .w(px(56.))
+                            .flex_shrink_0()
+                            .text_size(px(value))
+                            .line_height(relative(1.55))
+                            .text_color(
+                                crate::theme::surfaces(&self.state.read(cx).settings, cx).text,
+                            )
+                            .child("Aa"),
+                    )
+                }),
             cx,
         )
     }
@@ -386,40 +416,89 @@ impl Render for SettingsView {
             .clone()
             .unwrap_or("General".into());
         let mut nav = div()
-            .w(px(180.))
+            .w(px(208.))
             .flex_shrink_0()
             .v_flex()
             .gap_1()
-            .p_4()
+            .px_3()
+            .py_4()
             .border_r_1()
             .border_color(p.line)
-            .bg(p.canvas);
-        for name in SECTIONS {
-            let state = self.state.clone();
-            nav = nav.child(
-                Button::new(name)
-                    .ghost()
-                    .label(name)
-                    .w_full()
-                    .justify_start()
-                    .when(name == section, |button| {
-                        button.bg(p.selected).text_color(p.accent)
-                    })
-                    .on_click(move |_, _, cx| {
-                        state.update(cx, |state, cx| {
-                            state.settings_page = Some(name.into());
-                            state.shortcut_capture = None;
-                            cx.notify();
-                        })
-                    }),
+            .bg(p.canvas)
+            .child(
+                div()
+                    .px_2()
+                    .text_size(px(13.))
+                    .font_semibold()
+                    .child("Settings"),
             );
+        for (group, sections) in NAVIGATION {
+            nav = nav.child(
+                div()
+                    .px_2()
+                    .mt_4()
+                    .mb_1()
+                    .text_size(px(10.))
+                    .font_semibold()
+                    .text_color(p.muted)
+                    .child(group),
+            );
+            for (name, icon) in sections {
+                let name = *name;
+                let state = self.state.clone();
+                nav = nav.child(
+                    Button::new(name)
+                        .ghost()
+                        .accessibility_label(name)
+                        .w_full()
+                        .h(px(32.))
+                        .px_2()
+                        .child(
+                            div()
+                                .id(format!("settings-nav-{name}"))
+                                .test_support()
+                                .w_full()
+                                .flex()
+                                .items_center()
+                                .justify_start()
+                                .gap_2()
+                                .child(Icon::new(*icon).size_4())
+                                .child(
+                                    div()
+                                        .id(format!("settings-nav-label-{name}"))
+                                        .test_support()
+                                        .text_size(px(13.))
+                                        .child(name),
+                                ),
+                        )
+                        .when(name == section, |button| {
+                            button.bg(p.selected).text_color(p.accent)
+                        })
+                        .on_click(move |_, _, cx| {
+                            state.update(cx, |state, cx| {
+                                state.settings_page = Some(name.into());
+                                state.shortcut_capture = None;
+                                cx.notify();
+                            })
+                        }),
+                );
+            }
         }
         let close = self.state.clone();
         nav = nav.child(div().flex_1()).child(
             Button::new("close-settings")
                 .ghost()
-                .icon(IconName::ArrowLeft)
-                .label("Back to notes")
+                .w_full()
+                .accessibility_label("Back to notes")
+                .child(
+                    div()
+                        .w_full()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(Icon::new(IconName::ArrowLeft).size_4())
+                        .child(div().text_size(px(13.)).child("Back to notes")),
+                )
                 .on_click(move |_, _, cx| {
                     close.update(cx, |state, cx| {
                         state.settings_page = None;

@@ -1,4 +1,5 @@
 pub mod app;
+pub mod assets;
 pub mod background;
 pub mod diagnostics;
 pub mod models;

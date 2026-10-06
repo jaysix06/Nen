@@ -17,10 +17,13 @@ reminders are handled when Still opens or Windows resumes.
 ## Features
 
 - Debounced background autosave, local SQLite storage and recoverable archive.
+- Blank drafts are discarded quietly when their tab closes. Notes with a title,
+  content, pin or reminder are kept.
 - Compact tabs with reorder, middle-click close, reopen and session restoration.
 - Integrated native window controls and drag regions, with actual notes in the sidebar.
 - A compact category picker for Personal, Work, Ideas, pinned notes, reminders
-  and archive. Create, rename and remove categories; removing one keeps its notes.
+  and archive above the note list. Create, rename and remove categories;
+  removing one keeps its notes.
 - Plain text and Markdown writing, undo/redo, find and a formatted reading view.
 - Pinned notes and indexed local search, with title matches ranked first.
 - Note reminders with quick presets, daily/weekly/monthly/custom-day recurrence,
@@ -63,6 +66,9 @@ Background transformations are cached between launches.
 Use Up/Down and Enter in search to open results. Escape backs out through the
 floating states, then hides the compact bar. Shortcuts are editable under
 **Settings → Shortcuts**.
+Ctrl+, opens settings; pressing it again returns to the editor. Preferences use
+left-aligned groups and locally embedded Phosphor Fill icons. The editor font
+slider includes a live preview and applies to open notes immediately.
 
 ## Build requirements
 

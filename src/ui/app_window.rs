@@ -142,7 +142,35 @@ impl AppWindow {
                     state.create_note(false, cx);
                 });
             }
-            "toggle_float" | "quick_note" | "open_app" | "settings" => self
+            "settings" => {
+                let closing = self.state.read(cx).settings_page.is_some();
+                self.state.update(cx, |state, cx| {
+                    if closing {
+                        state.settings_page = None;
+                        state.shortcut_capture = None;
+                        cx.notify();
+                    } else {
+                        state.desktop_command("settings", cx);
+                    }
+                });
+                if closing {
+                    if let Some(editor) = self
+                        .state
+                        .read(cx)
+                        .session
+                        .active
+                        .as_ref()
+                        .and_then(|id| self.editors.get(id))
+                    {
+                        editor.update(cx, |editor, cx| {
+                            editor.body.update(cx, |body, cx| body.focus(window, cx))
+                        });
+                    } else {
+                        window.focus(&self.focus, cx);
+                    }
+                }
+            }
+            "toggle_float" | "quick_note" | "open_app" => self
                 .state
                 .update(cx, |state, cx| state.desktop_command(command, cx)),
             "close_tab" => {
@@ -277,11 +305,6 @@ impl AppWindow {
     fn note_list(&self, width: f32, window: &Window, cx: &App) -> AnyElement {
         let p = crate::theme::surfaces(&self.state.read(cx).settings, cx);
         let app = self.state.read(cx);
-        let title = if app.query.is_empty() {
-            "Notes"
-        } else {
-            "Search results"
-        };
         let mut list = div()
             .id("note-list")
             .v_flex()
@@ -402,19 +425,16 @@ impl AppWindow {
             .bg(p.sidebar)
             .child(
                 div()
+                    .id("notes-header")
+                    .test_support()
                     .h(px(38.))
-                    .px_4()
+                    .px_3()
                     .flex()
                     .items_center()
                     .justify_between()
                     .border_b_1()
                     .border_color(p.line)
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(title),
-                    )
+                    .child(super::categories::picker(self.state.clone(), cx))
                     .child(
                         Button::new("new-sidebar-note")
                             .ghost()
@@ -759,11 +779,6 @@ impl Render for AppWindow {
                             .flex()
                             .items_center()
                             .gap_3()
-                            .child(
-                                div()
-                                    .occlude()
-                                    .child(super::categories::picker(self.state.clone(), cx)),
-                            )
                             .child(
                                 div().occlude().child(
                                     Button::new("toggle-sidebar")

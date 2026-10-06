@@ -21,10 +21,11 @@ pub fn picker(state: Entity<AppState>, cx: &App) -> impl IntoElement {
         .ghost()
         .small()
         .label(label)
-        .icon(IconName::ChevronDown)
-        .bg(p.sidebar)
-        .border_1()
-        .border_color(p.line)
+        .child(
+            Icon::new(IconName::ChevronDown)
+                .size_3()
+                .text_color(p.muted),
+        )
         .rounded(px(5.))
         .tooltip("Categories")
         .dropdown_menu(move |menu, _, cx| category_menu(menu, state.clone(), cx))

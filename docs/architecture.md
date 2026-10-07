@@ -116,3 +116,24 @@ editor and reminder states. Its shell stays anchored at the top while its
 width and height change. GPUI springs preserve velocity when the user
 changes direction midway through a transition. Settled springs stop
 requesting frames.
+
+The floating shell uses the dominant color of the rendered wallpaper, sampled
+off the UI thread when the wallpaper changes. Its text switches between black
+and white for contrast. Compact corners form a 56-pixel-high pill; the native
+Windows region and GPUI radius agree during resize animations. Opening a
+floating note in the main window hides the floating window and clears its
+editing/reminder state.
+
+List formatting preserves Markdown text and native undo history. Enter,
+Tab and Shift+Tab are intercepted as input actions before default textarea
+handling; unbound marker keys are handled as key events. Fenced code is left
+alone. Body zoom is local to an editor view, applies to writing and reading,
+and leaves titles and tab controls unchanged. Ctrl+wheel is intercepted in
+the body viewport before text scrolling consumes the event.
+
+Images are decoded off the UI thread with size and allocation limits, then
+stored as independent PNGs in the database's sibling `note-images` folder.
+Notes contain `nen-image://UUID.png` Markdown references. The reading renderer
+resolves only these managed files, checks directory containment, and continues
+to block web images and arbitrary file paths. Importing briefly disables body
+input and checks the target note still exists before inserting its reference.

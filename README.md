@@ -30,6 +30,13 @@ reminders are handled when Nen opens or Windows resumes.
   and archive above the note list. Create, rename and remove categories;
   removing one keeps its notes.
 - Plain text and Markdown writing, undo/redo, find and a formatted reading view.
+- Bulleted, numbered and checklist formatting through the Lists menu. Enter
+  continues a list or ends an empty item; Tab and Shift+Tab change indentation.
+  Dot and bullet markers typed at the start of a line become Markdown bullets.
+- Body-only zoom with Ctrl+mouse wheel and footer zoom controls, from 50% to
+  300%. Ctrl+0 in the body resets zoom. Note titles keep their original size.
+- Paste clipboard images or use Insert image for PNG, JPEG, WebP and BMP files.
+  Nen saves independent local copies and shows them in Reading view.
 - Pinned notes and indexed local search, with title matches ranked first.
 - Note reminders with quick presets, daily/weekly/monthly/custom-day recurrence,
   snooze, completion and native Windows notification actions.
@@ -45,8 +52,9 @@ reminders are handled when Nen opens or Windows resumes.
   Clicking it downloads the new version, saves your notes and preferences,
   installs it and reopens Nen. Failed downloads leave Nen running for retry.
 
-The editor stores Markdown as text. Remote images are not loaded by the reading
-view. Links open in the default application only when clicked. Frosted surfaces
+The editor stores Markdown as text. Inserted images use local managed references;
+remote images are not loaded by the reading view. Links open in the default
+application only when clicked. Frosted surfaces
 use a cached, locally blurred background; they do not continuously blur other
 desktop windows.
 Dim controls the background tint directly. Dark foreground surfaces preserve
@@ -118,7 +126,8 @@ the same tool on PATH or through the Windows SDK installation.
 ## Local data
 
 Application data is stored under `%LOCALAPPDATA%\Nen\Nen\data`:
-`notes.sqlite`, its SQLite journal files, managed backgrounds and bounded logs.
+`notes.sqlite`, its SQLite journal files, managed backgrounds, the `note-images`
+folder and bounded logs. Include `note-images` when backing up notes with images.
 Existing installations continue using `%LOCALAPPDATA%\Still\Still\data`
 so notes, settings, reminders and image paths remain intact.
 The app registers its own Windows notification identity and COM activator under

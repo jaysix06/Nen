@@ -3,6 +3,7 @@ pub mod assets;
 pub mod background;
 pub mod diagnostics;
 pub mod models;
+pub mod note_images;
 pub mod platform;
 pub mod storage;
 pub mod theme;

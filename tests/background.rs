@@ -1,6 +1,24 @@
 use nen::{background, models::Settings};
 
 #[test]
+fn island_color_uses_the_largest_color_area_and_ignores_transparency() -> anyhow::Result<()> {
+    let path = std::env::temp_dir().join(format!("nen-colors-{}.png", uuid::Uuid::new_v4()));
+    let mut image = image::RgbaImage::from_pixel(64, 64, image::Rgba([210, 70, 30, 255]));
+    for (x, _, pixel) in image.enumerate_pixels_mut() {
+        if x < 16 {
+            *pixel = image::Rgba([20, 40, 220, 255]);
+        }
+        if x > 55 {
+            *pixel = image::Rgba([0, 0, 0, 0]);
+        }
+    }
+    image.save(&path)?;
+    assert_eq!(background::dominant_color(&path)?, 0xd2461e);
+    std::fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
 fn importing_and_transforming_a_background_never_changes_the_original() -> anyhow::Result<()> {
     let root = std::env::temp_dir().join(format!("nen-image-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root)?;

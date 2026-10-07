@@ -1,6 +1,6 @@
 [package]
 name = "nen"
-version = "0.2.8"
+version = "0.2.9"
 edition = "2024"
 description = "A quiet, local-first native notes app"
 license = "MIT"
@@ -20,7 +20,7 @@ directories = "6"
 uuid = { version = "1", features = ["v4", "serde"] }
 log = "0.4"
 async-channel = "2"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
 semver = "1"
 sha2 = "0.11"
 ureq = { version = "3.4", default-features = false, features = ["rustls"] }

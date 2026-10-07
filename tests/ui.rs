@@ -10,6 +10,277 @@ use nen::{
 };
 
 #[gpui_kit::test]
+fn pasted_images_are_managed_locally_and_saved_with_the_note(cx: &mut TestAppContext) {
+    cx.dispatcher.allow_parking();
+    let directory = std::env::temp_dir().join(format!("nen-paste-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).expect("fixture");
+    let path = directory.join("notes.sqlite");
+    let (store, _, _, _) = Store::start(path.clone()).expect("worker");
+    cx.update(gpui_kit::init);
+    let state = cx.new(|cx| {
+        AppState::new(
+            store.clone(),
+            Settings {
+                default_wallpaper: false,
+                reduced_motion: true,
+                ..Settings::default()
+            },
+            Session::default(),
+            cx,
+        )
+    });
+    let (handle, root) = cx.update(|cx| {
+        gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+            cx.new(|cx| AppWindow::new(state.clone(), window, cx))
+        })
+        .expect("window")
+    });
+    state.update(cx, |state, cx| state.create_note(false, cx));
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+        .expect("frame");
+    let id = state.read_with(cx, |state, _| state.session.active.clone().expect("note"));
+    let editor = root.read_with(cx, |root, _| root.editors[&id].clone());
+    cx.update_window(handle, |_, window, cx| {
+        editor.update(cx, |editor, cx| {
+            editor.body.update(cx, |input, cx| input.focus(window, cx))
+        })
+    })
+    .expect("focus body");
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+        32,
+        16,
+        image::Rgba([10, 80, 160, 255]),
+    ))
+    .write_to(&mut bytes, image::ImageFormat::Png)
+    .expect("png");
+    let image = gpui_kit::Image::from_bytes(gpui_kit::ImageFormat::Png, bytes.into_inner());
+    cx.update(|cx| cx.write_to_clipboard(gpui_kit::ClipboardItem::new_image(&image)));
+    cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+        .expect("focus frame");
+    cx.simulate_keystrokes(handle, "ctrl-v");
+    cx.run_until_parked();
+    let content = state.read_with(cx, |state, _| state.notes[&id].note.content.clone());
+    assert!(content.starts_with("![Image](nen-image://"), "{content:?}");
+    let uri = content
+        .trim()
+        .strip_prefix("![Image](")
+        .and_then(|value| value.strip_suffix(')'))
+        .expect("image markdown");
+    let image_path = nen::note_images::resolve(uri, &directory).expect("stored image");
+    assert_eq!(image::open(&image_path).expect("png").width(), 32);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("read-note", cx);
+        window.render_frame(cx);
+        assert!(window.find("reading-view").visible());
+    })
+    .expect("reading image");
+    state.update(cx, |state, cx| state.close_tab(&id, cx));
+    store
+        .request(Request::Shutdown)
+        .recv_blocking()
+        .expect("shutdown")
+        .expect("saved");
+    assert_eq!(
+        Database::open(&path)
+            .expect("reopen")
+            .note(&id)
+            .expect("load")
+            .expect("note")
+            .content,
+        content
+    );
+    std::fs::remove_file(image_path).expect("remove image");
+    std::fs::remove_dir(directory.join("note-images")).expect("remove images directory");
+    std::fs::remove_file(path).expect("remove database");
+    std::fs::remove_dir(directory).expect("remove fixture");
+}
+
+#[gpui_kit::test]
+fn body_lists_zoom_and_long_reading_notes_preserve_fixed_chrome(cx: &mut TestAppContext) {
+    cx.dispatcher.allow_parking();
+    let path = std::env::temp_dir().join(format!("nen-editor-{}.sqlite", uuid::Uuid::new_v4()));
+    let id = {
+        let database = Database::open(&path).expect("database");
+        let mut note = nen::models::Note::new(nen::models::NoteType::Normal);
+        note.title = "Lists and zoom".into();
+        note.content = "1. first".into();
+        database.save_note(&note).expect("note");
+        note.id
+    };
+    let (store, _, _, _) = Store::start(path.clone()).expect("worker");
+    let settings = Settings {
+        default_wallpaper: false,
+        reduced_motion: true,
+        ..Settings::default()
+    };
+    let session = Session {
+        tabs: vec![id.clone()],
+        active: Some(id.clone()),
+        ..Session::default()
+    };
+    cx.update(gpui_kit::init);
+    cx.update(|cx| nen::theme::apply(&settings, cx));
+    let state = cx.new(|cx| AppState::new(store.clone(), settings, session, cx));
+    let (handle, root) = cx.update(|cx| {
+        gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+            cx.new(|cx| AppWindow::new(state.clone(), window, cx))
+        })
+        .expect("window")
+    });
+    store
+        .request(Request::Categories)
+        .recv_blocking()
+        .expect("load barrier")
+        .expect("categories");
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+        .expect("initial frame");
+    let editor = root.read_with(cx, |root, _| root.editors[&id].clone());
+    let body = editor.read_with(cx, |editor, _| editor.body.clone());
+    cx.update_window(handle, |_, window, cx| {
+        body.update(cx, |input, cx| {
+            input.set_cursor_position(gpui_kit::base::input::Position::new(0, 8), window, cx)
+        });
+        window.render_frame(cx);
+    })
+    .expect("focus body");
+    cx.simulate_keystrokes(handle, "enter");
+    cx.run_until_parked();
+    assert_eq!(
+        body.read_with(cx, |body, _| body.value().to_string()),
+        "1. first\n2. "
+    );
+    cx.simulate_keystrokes(handle, "enter");
+    cx.run_until_parked();
+    assert_eq!(
+        body.read_with(cx, |body, _| body.value().to_string()),
+        "1. first\n"
+    );
+    cx.simulate_keystrokes(handle, "ctrl-z");
+    cx.run_until_parked();
+    assert_eq!(
+        body.read_with(cx, |body, _| body.value().to_string()),
+        "1. first\n2. "
+    );
+    cx.simulate_keystrokes(handle, "tab");
+    cx.run_until_parked();
+    assert_eq!(
+        body.read_with(cx, |body, _| body.value().to_string()),
+        "1. first\n    2. "
+    );
+    assert_eq!(body.read_with(cx, |body, _| body.cursor()), 16);
+    cx.simulate_keystrokes(handle, "shift-tab");
+    cx.run_until_parked();
+    assert_eq!(
+        body.read_with(cx, |body, _| body.value().to_string()),
+        "1. first\n2. "
+    );
+    state.update(cx, |state, cx| {
+        state.edit(&id, "Lists and zoom".into(), ".".into(), cx)
+    });
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        body.update(cx, |input, cx| {
+            input.set_cursor_position(gpui_kit::base::input::Position::new(0, 1), window, cx)
+        });
+        window.render_frame(cx);
+    })
+    .expect("type a bullet marker");
+    cx.simulate_keystrokes(handle, "space");
+    cx.run_until_parked();
+    assert_eq!(body.read_with(cx, |body, _| body.value().to_string()), "- ");
+    state.update(cx, |state, cx| {
+        state.edit(
+            &id,
+            "Lists and zoom".into(),
+            "A very long paragraph with wrapped body text. ".repeat(400),
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    let (body_bounds, title_bounds, title_height, initial_line) = cx
+        .update_window(handle, |_, window, cx| {
+            window.render_frame(cx);
+            (
+                window.find("note-body").bounds(),
+                window.find("note-title").bounds(),
+                window.find("note-title").bounds().size.height,
+                body.read(cx).line_height().expect("line height"),
+            )
+        })
+        .expect("initial layout");
+    let mut visual = gpui_kit::VisualTestContext::from_window(handle, cx);
+    visual.simulate_event(gpui_kit::ScrollWheelEvent {
+        position: body_bounds.center(),
+        delta: gpui_kit::ScrollDelta::Lines(gpui_kit::point(0., 1.)),
+        modifiers: gpui_kit::Modifiers {
+            control: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(body.read(cx).line_height().expect("zoomed line") > initial_line);
+        assert_eq!(window.find("note-title").bounds().size.height, title_height);
+    })
+    .expect("body zoom");
+    visual.simulate_event(gpui_kit::ScrollWheelEvent {
+        position: body_bounds.center(),
+        delta: gpui_kit::ScrollDelta::Lines(gpui_kit::point(0., -1.)),
+        modifiers: gpui_kit::Modifiers {
+            control: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(body.read(cx).line_height().expect("zoom out"), initial_line);
+    })
+    .expect("zoom out body");
+    let zoomed = body.read_with(cx, |body, _| body.line_height().expect("zoomed body"));
+    visual.simulate_event(gpui_kit::ScrollWheelEvent {
+        position: title_bounds.center(),
+        delta: gpui_kit::ScrollDelta::Lines(gpui_kit::point(0., 1.)),
+        modifiers: gpui_kit::Modifiers {
+            control: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(body.read(cx).line_height().expect("same zoom"), zoomed);
+        window.click("read-note", cx);
+        window.render_frame(cx);
+        assert_eq!(window.find("tabs").bounds().size.height, gpui_kit::px(38.));
+        assert_eq!(window.find("note-title").bounds().size.height, title_height);
+        assert_eq!(
+            window.find("note-footer").bounds().size.height,
+            gpui_kit::px(34.)
+        );
+        assert!(
+            window.find("reading-view").bounds().bottom()
+                <= window.find("note-footer").bounds().top()
+        );
+    })
+    .expect("long reading layout");
+    store
+        .request(Request::Shutdown)
+        .recv_blocking()
+        .expect("shutdown")
+        .expect("saved");
+    std::fs::remove_file(path).expect("remove database");
+}
+
+#[gpui_kit::test]
 fn update_banner_sits_above_settings_and_failed_updates_preserve_notes(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
     let path = std::env::temp_dir().join(format!("nen-update-ui-{}.sqlite", uuid::Uuid::new_v4()));
@@ -1127,6 +1398,18 @@ fn floating_note_and_inline_reminder_share_persistent_state(cx: &mut TestAppCont
     };
     assert_eq!(reminders.len(), 1);
     assert_eq!(reminders[0].note_id, id);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("island-open", cx);
+    })
+    .expect("expand into main app");
+    cx.run_until_parked();
+    state.read_with(cx, |state, _| {
+        assert!(!state.floating_visible);
+        assert!(state.floating_note.is_none());
+        assert!(!state.floating_reminder);
+        assert_eq!(state.session.active.as_deref(), Some(id.as_str()));
+    });
     assert!(
         store
             .request(Request::Shutdown)

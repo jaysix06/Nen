@@ -579,7 +579,9 @@ impl AppWindow {
         let app = self.state.read(cx);
         let mut tabs = div()
             .id("tabs")
+            .test_support()
             .h(px(38.))
+            .flex_shrink_0()
             .w_full()
             .flex()
             .items_center()
@@ -778,6 +780,8 @@ impl Render for AppWindow {
             let editor = div()
                 .flex_1()
                 .min_w_0()
+                .min_h_0()
+                .overflow_hidden()
                 .v_flex()
                 .when(
                     self.state.read(cx).collection != Collection::Reminders,

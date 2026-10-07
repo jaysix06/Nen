@@ -5,7 +5,7 @@ toolchain. The executable uses native GPUI rendering, not a browser.
 
 ## Checks
 
-- `cargo test --locked --features ui-testing`: 42 passing tests.
+- `cargo test --locked --features ui-testing`: 48 passing tests.
 - `cargo clippy --locked --features ui-testing --all-targets -- -D warnings`: clean.
 - `cargo fmt -- --check`: clean.
 - `cargo build --locked --release`: successful; UI testing features excluded.
@@ -18,7 +18,23 @@ toolchain. The executable uses native GPUI rendering, not a browser.
   [results](screenshots/results.png), [editor](screenshots/note.png),
   [reminder](screenshots/reminder.png) and [appearance](screenshots/settings.png).
 - Normal Windows launches and restored sessions were checked for callback errors.
-- Packaged Nen 0.2.8 starts, saves notes and preferences, and shuts down gracefully.
+- Packaged Nen 0.2.9 starts, preserves notes through update/relaunch, and shuts
+  down gracefully.
+
+The 0.2.9 editor checks cover ordered/bulleted/checklist continuation, empty-item
+exit, indentation, Unicode, list toggling and avoiding code fences/decimals.
+GPUI input tests exercise Enter and undo, Ctrl+wheel on a long body while keeping
+the title unchanged, and fixed tab/title/footer heights in long reading views.
+Clipboard image paste is exercised through Ctrl+V, managed-file resolution,
+Reading view and note close/reopen persistence. Dominant-color sampling ignores
+transparent pixels; the floating expand action hides the island and activates
+the same note in the main app.
+
+Native 0.2.9 captures show managed images and lists in Reading view with stable
+tabs and footer, plus contrasting text/icons on a blue wallpaper-derived pill.
+A Windows region check confirmed a 380 × 56 client area, excluded square
+corners, and no caption/resize frame. See [reading with images](screenshots/reading-images.png)
+and [wallpaper-colored pill](screenshots/compact-color.png).
 
 The 0.2.8 updater checks newer stable versions, ignores version build metadata,
 rejects foreign download URLs, missing checksums, oversized downloads, corrupt
@@ -34,7 +50,7 @@ cleanup. The update banner was captured and inspected in
 [the native window](screenshots/updates.png). Installation testing uses an offline
 release fixture. Live checks use `jaysix06/Nen`, configured in the package metadata.
 The same native replacement/relaunch check passed against the production
-`dist/Nen.exe` build, with UI-testing features excluded. Windows notification
+Nen 0.2.9 `dist/Nen.exe` build, with UI-testing features excluded. Windows notification
 registration was restored to the packaged executable after the isolated checks.
 
 The read-only `check_updates` example reached the configured GitHub API and
@@ -120,7 +136,7 @@ fail; the original code was restored before the final suite.
 
 ## Measurements
 
-Nen 0.2.7 release executable: 32,000,000 bytes (30.52 MiB), including its local wallpaper.
+Nen 0.2.9 release executable: 34,693,120 bytes (33.09 MiB), including its local wallpaper.
 The performance samples below were collected with 0.2.0.
 
 | Measurement | Result |

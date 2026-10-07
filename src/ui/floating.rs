@@ -3,7 +3,6 @@ use crate::{
     models::*,
     platform,
     storage::{Request, Response},
-    theme::palette,
     ui::{editor::NoteEditor, reminders::ReminderPicker},
 };
 use gpui_kit::component::{
@@ -77,7 +76,7 @@ impl FloatingWindow {
         .detach();
     }
     pub fn new(state: Entity<AppState>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder("Search or write..."));
+        let input = cx.new(|cx| InputState::new(window, cx));
         let mut view = Self {
             state: state.clone(),
             input: input.clone(),
@@ -303,7 +302,11 @@ impl FloatingWindow {
 }
 impl Render for FloatingWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = palette(cx);
+        let p = crate::theme::island_palette(
+            self.state.read(cx).wallpaper_color,
+            &self.state.read(cx).settings,
+            cx,
+        );
         let mut settings = self.state.read(cx).settings.clone();
         if let Some((x, y)) = self.position_override {
             settings.floating_position = "Custom".into();
@@ -360,6 +363,7 @@ impl Render for FloatingWindow {
                         Button::new("island-back")
                             .ghost()
                             .small()
+                            .text_color(p.text)
                             .icon(IconName::ArrowLeft)
                             .tooltip("Back")
                             .on_click(move |_, _, cx| {
@@ -387,6 +391,7 @@ impl Render for FloatingWindow {
                         Button::new("island-reminder")
                             .ghost()
                             .small()
+                            .text_color(p.text)
                             .icon(IconName::Bell)
                             .tooltip("Set reminder")
                             .on_click(move |_, _, cx| {
@@ -400,10 +405,15 @@ impl Render for FloatingWindow {
                         Button::new("island-open")
                             .ghost()
                             .small()
+                            .text_color(p.text)
                             .icon(IconName::ArrowUpRight)
                             .tooltip("Open in full app")
-                            .on_click(move |_, _, cx| {
+                            .on_click(move |_, window, cx| {
+                                platform::hide(window, cx);
                                 full.update(cx, |state, cx| {
+                                    state.floating_visible = false;
+                                    state.floating_note = None;
+                                    state.floating_reminder = false;
                                     state.open_note(&open_id, cx);
                                     state.desktop_command("open_app", cx);
                                 })
@@ -413,6 +423,7 @@ impl Render for FloatingWindow {
                         Button::new("island-hide")
                             .ghost()
                             .small()
+                            .text_color(p.text)
                             .icon(IconName::X)
                             .tooltip("Hide")
                             .on_click(cx.listener(|view, _, window, cx| {
@@ -476,17 +487,42 @@ impl Render for FloatingWindow {
                             ),
                     )
                     .child(
-                        Input::new(&self.input)
-                            .appearance(false)
-                            .bordered(false)
-                            .focus_bordered(false)
+                        div()
+                            .relative()
                             .flex_1()
-                            .aria_label("Search or write"),
+                            .child(
+                                Input::new(&self.input)
+                                    .appearance(false)
+                                    .bordered(false)
+                                    .focus_bordered(false)
+                                    .w_full()
+                                    .text_color(p.text)
+                                    .aria_label("Search or write"),
+                            )
+                            .when(self.input.read(cx).value().is_empty(), |view| {
+                                let input = self.input.clone();
+                                view.child(
+                                    div()
+                                        .absolute()
+                                        .left(px(8.))
+                                        .top_0()
+                                        .h_full()
+                                        .flex()
+                                        .items_center()
+                                        .text_color(p.muted)
+                                        .text_size(px(14.))
+                                        .child("Search or write...")
+                                        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                                            input.update(cx, |input, cx| input.focus(window, cx))
+                                        }),
+                                )
+                            }),
                     )
                     .child(
                         Button::new("island-expand")
                             .ghost()
                             .small()
+                            .text_color(p.text)
                             .icon(IconName::ChevronDown)
                             .tooltip("Recent and pinned notes")
                             .on_click(cx.listener(|view, _, window, cx| {
@@ -499,6 +535,7 @@ impl Render for FloatingWindow {
                         Button::new("island-new")
                             .ghost()
                             .small()
+                            .text_color(p.text)
                             .icon(IconName::Plus)
                             .tooltip("New quick note")
                             .on_click(cx.listener(|view, _, _, cx| view.quick_note(cx))),
@@ -574,6 +611,7 @@ impl Render for FloatingWindow {
                             Button::new("island-compact")
                                 .ghost()
                                 .small()
+                                .text_color(p.text)
                                 .label("Collapse")
                                 .on_click(cx.listener(|view, _, _, cx| {
                                     view.expanded = false;
@@ -586,10 +624,8 @@ impl Render for FloatingWindow {
         div()
             .id("floating-island")
             .size_full()
-            .rounded(px(18.))
+            .rounded(px(crate::theme::island_radius(height)))
             .overflow_hidden()
-            .border_1()
-            .border_color(p.line)
             .bg(p.paper)
             .text_color(p.text)
             .font_family("Segoe UI")

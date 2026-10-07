@@ -353,6 +353,15 @@ pub fn floating_style(window: &Window, settings: &Settings, cx: &gpui_kit::App) 
         cx.foreground_executor()
             .spawn(async move {
                 unsafe {
+                    // A popup can inherit an invisible resize frame from the
+                    // native renderer. Remove it so client and pill bounds agree.
+                    let frame = GetWindowLongPtrW(hwnd, GWL_STYLE);
+                    let borders = WS_CAPTION | WS_THICKFRAME | WS_BORDER | WS_DLGFRAME;
+                    let _ = SetWindowLongPtrW(
+                        hwnd,
+                        GWL_STYLE,
+                        (frame & !(borders.0 as isize)) | WS_POPUP.0 as isize,
+                    );
                     let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
                     let _ =
                         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style | WS_EX_TOOLWINDOW.0 as isize);
@@ -367,7 +376,7 @@ pub fn floating_style(window: &Window, settings: &Settings, cx: &gpui_kit::App) 
                         0,
                         0,
                         0,
-                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
                     );
                     if settings.floating_opacity < 0.999 {
                         let _ = SetWindowLongPtrW(
@@ -389,11 +398,18 @@ pub fn floating_style(window: &Window, settings: &Settings, cx: &gpui_kit::App) 
                             current & !(WS_EX_LAYERED.0 as isize),
                         );
                     }
-                    let radius = 2i32;
+                    let radius = 1i32;
                     let _ = DwmSetWindowAttribute(
                         hwnd,
                         DWMWA_WINDOW_CORNER_PREFERENCE,
                         &radius as *const _ as *const c_void,
+                        4,
+                    );
+                    let border = 0xfffffffeu32;
+                    let _ = DwmSetWindowAttribute(
+                        hwnd,
+                        DWMWA_BORDER_COLOR,
+                        &border as *const _ as *const c_void,
                         4,
                     );
                 }
@@ -432,6 +448,7 @@ pub fn position_floating(
         let scale = window.scale_factor();
         let w = (width * scale).round() as i32;
         let h = (height * scale).round() as i32;
+        let diameter = (crate::theme::island_radius(height) * 2. * scale).round() as i32;
         let (l, t, r, b) = anchor;
         let margin = (24. * scale) as i32;
         let (x, y) = match settings.floating_position.as_str() {
@@ -458,6 +475,10 @@ pub fn position_floating(
                         h,
                         SWP_NOZORDER | SWP_NOACTIVATE,
                     );
+                    let region = CreateRoundRectRgn(0, 0, w + 1, h + 1, diameter, diameter);
+                    if !region.is_invalid() && SetWindowRgn(hwnd, Some(region), true) == 0 {
+                        let _ = DeleteObject(region.into());
+                    }
                 }
             })
             .detach();

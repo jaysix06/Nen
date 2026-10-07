@@ -41,12 +41,17 @@ type Reply = async_channel::Sender<Result<Response, String>>;
 #[derive(Clone)]
 pub struct Store {
     sender: mpsc::Sender<(Request, Reply)>,
+    directory: PathBuf,
 }
 
 impl Store {
     pub fn start(
         path: PathBuf,
     ) -> anyhow::Result<(Self, Settings, Session, async_channel::Receiver<StoreEvent>)> {
+        let directory = path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .to_owned();
         let database = Database::open(&path)?;
         let settings = database.get_setting("settings")?;
         let session = database.get_setting("session")?;
@@ -113,7 +118,16 @@ impl Store {
                     let _ = reply.try_send(result);
                 }
             })?;
-        Ok((Self { sender }, settings, session, event_receiver))
+        Ok((
+            Self { sender, directory },
+            settings,
+            session,
+            event_receiver,
+        ))
+    }
+
+    pub fn directory(&self) -> &std::path::Path {
+        &self.directory
     }
 
     pub fn request(&self, request: Request) -> async_channel::Receiver<Result<Response, String>> {

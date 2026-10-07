@@ -264,6 +264,7 @@ pub fn default_shortcuts() -> std::collections::BTreeMap<String, String> {
         ("previous_tab", "ctrl-shift-tab"),
         ("toggle_sidebar", "ctrl-b"),
         ("find", "ctrl-f"),
+        ("toggle_reading", "ctrl-shift-r"),
         ("search", "ctrl-shift-f"),
         ("reminder", "ctrl-r"),
         ("toggle_float", "ctrl-shift-space"),

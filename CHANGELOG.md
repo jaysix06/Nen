@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.12 - 2026-10-07
+
+### Added
+
+- Ctrl+Shift+R switches between Reading view and editing in the main app and
+  floating notes. Change the shortcut in Settings; the Reading view button's
+  tooltip shows the current binding.
+
 ## 0.2.11 - 2026-10-07
 
 ### Fixed

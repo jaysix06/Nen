@@ -233,6 +233,14 @@ impl FloatingWindow {
                         editor.update(cx, |editor, cx| editor.find(window, cx));
                     }
                 }
+                "toggle_reading" => {
+                    if !self.state.read(cx).floating_reminder
+                        && self.state.read(cx).floating_note.is_some()
+                        && let Some((_, editor)) = &self.editor
+                    {
+                        editor.update(cx, |editor, cx| editor.toggle_reading(window, cx));
+                    }
+                }
                 "next_tab" | "previous_tab" => {
                     if !self.results.is_empty() {
                         let current = self

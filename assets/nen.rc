@@ -1,8 +1,8 @@
 #include <windows.h>
 1 ICON "assets/nen.ico"
 1 VERSIONINFO
- FILEVERSION 0,2,11,0
- PRODUCTVERSION 0,2,11,0
+ FILEVERSION 0,2,12,0
+ PRODUCTVERSION 0,2,12,0
  FILETYPE VFT_APP
 BEGIN
  BLOCK "StringFileInfo"
@@ -11,11 +11,11 @@ BEGIN
   BEGIN
    VALUE "CompanyName", "Nen\0"
    VALUE "FileDescription", "Nen Notes\0"
-   VALUE "FileVersion", "0.2.11\0"
+   VALUE "FileVersion", "0.2.12\0"
    VALUE "InternalName", "Nen\0"
    VALUE "OriginalFilename", "Nen.exe\0"
    VALUE "ProductName", "Nen\0"
-   VALUE "ProductVersion", "0.2.11\0"
+   VALUE "ProductVersion", "0.2.12\0"
   END
  END
  BLOCK "VarFileInfo"

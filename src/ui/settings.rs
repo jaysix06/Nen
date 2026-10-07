@@ -382,6 +382,7 @@ pub fn action_label(action: &str) -> String {
         "previous_tab" => "Previous tab",
         "toggle_sidebar" => "Toggle notes sidebar",
         "find" => "Find in note",
+        "toggle_reading" => "Toggle Reading view",
         "search" => "Search all notes",
         "reminder" => "Set reminder",
         "toggle_float" => "Toggle floating bar",

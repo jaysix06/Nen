@@ -200,6 +200,15 @@ impl AppWindow {
                     editor.update(cx, |editor, cx| editor.find(window, cx));
                 }
             }
+            "toggle_reading" => {
+                if self.state.read(cx).settings_page.is_none()
+                    && self.state.read(cx).collection != Collection::Reminders
+                    && let Some(id) = self.state.read(cx).session.active.as_ref()
+                    && let Some(editor) = self.editors.get(id)
+                {
+                    editor.update(cx, |editor, cx| editor.toggle_reading(window, cx));
+                }
+            }
             "reminder" => {
                 if let Some(id) = self.state.read(cx).session.active.clone() {
                     super::reminders::open_picker(self.state.clone(), id, window, cx);

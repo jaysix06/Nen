@@ -124,6 +124,15 @@ impl NoteEditor {
         });
     }
 
+    pub fn toggle_reading(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.state.read(cx).is_quitting() || self.image_busy {
+            return;
+        }
+        self.reading = !self.reading;
+        self.focus_body(window, cx);
+        cx.notify();
+    }
+
     fn change_zoom(&mut self, delta: f32, cx: &mut Context<Self>) {
         self.zoom = (self.zoom + delta).clamp(0.5, 3.);
         self.body.update(cx, |_, cx| cx.notify());
@@ -478,6 +487,18 @@ impl Render for NoteEditor {
         }
         let p = crate::theme::surfaces(&self.state.read(cx).settings, cx);
         let app = self.state.read(cx);
+        let reading_label = if self.reading {
+            "Edit note"
+        } else {
+            "Reading view"
+        };
+        let reading_tooltip = app
+            .settings
+            .shortcuts
+            .get("toggle_reading")
+            .filter(|binding| !binding.is_empty())
+            .map(|binding| format!("{reading_label} ({})", binding.replace('-', " + ")))
+            .unwrap_or_else(|| reading_label.to_owned());
         let Some(buffer) = app.notes.get(&self.id) else {
             return div().into_any_element();
         };
@@ -590,19 +611,9 @@ impl Render for NoteEditor {
                             } else {
                                 IconName::BookOpen
                             })
-                            .tooltip(if self.reading {
-                                "Edit note"
-                            } else {
-                                "Reading view"
-                            })
+                            .tooltip(reading_tooltip)
                             .on_click(cx.listener(|view, _, window, cx| {
-                                view.reading = !view.reading;
-                                if view.reading {
-                                    window.focus(&view.content_focus, cx);
-                                } else {
-                                    view.body.update(cx, |input, cx| input.focus(window, cx));
-                                }
-                                cx.notify();
+                                view.toggle_reading(window, cx);
                             })),
                     )
                     .child(

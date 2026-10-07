@@ -47,6 +47,7 @@ Background transformations are cached between launches.
 | Select tab | Ctrl+1 through Ctrl+9 |
 | Select category | Ctrl+Shift+1 through Ctrl+Shift+9 |
 | Find in note | Ctrl+F |
+| Toggle Reading view / editing | Ctrl+Shift+R |
 | Search notes | Ctrl+Shift+F |
 | Toggle notes sidebar | Ctrl+B |
 | Add reminder | Ctrl+R |

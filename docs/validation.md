@@ -5,7 +5,7 @@ toolchain. The executable uses native GPUI rendering, not a browser.
 
 ## Checks
 
-- `cargo test --locked --features ui-testing`: 50 passing tests.
+- `cargo test --locked --features ui-testing`: 51 passing tests.
 - `cargo clippy --locked --features ui-testing --all-targets -- -D warnings`: clean.
 - `cargo fmt -- --check`: clean.
 - `cargo build --locked --release`: successful; UI testing features excluded.
@@ -18,8 +18,13 @@ toolchain. The executable uses native GPUI rendering, not a browser.
   [results](screenshots/results.png), [editor](screenshots/note.png),
   [reminder](screenshots/reminder.png) and [appearance](screenshots/settings.png).
 - Normal Windows launches and restored sessions were checked for callback errors.
-- Packaged Nen 0.2.11 starts, preserves notes through update/relaunch, and shuts
+- Packaged Nen 0.2.12 starts, preserves notes through update/relaunch, and shuts
   down gracefully.
+
+The 0.2.12 Reading view shortcut check sends Ctrl+Shift+R in both the main app
+and floating notes, starting with focus in the title. It verifies Reading view,
+switching back and continued typing in the body, installing the new default in
+existing settings, and remapping the shortcut with the old binding inactive.
 
 The 0.2.11 regression checks compare the floating window's painted surface and
 Dim with the main appearance palette across both themes and all three surface
@@ -81,7 +86,7 @@ cleanup. The update banner was captured and inspected in
 [the native window](screenshots/updates.png). Installation testing uses an offline
 release fixture. Live checks use `jaysix06/Nen`, configured in the package metadata.
 The same native replacement/relaunch check passed against the production
-Nen 0.2.11 `dist/Nen.exe` build, with UI-testing features excluded. Windows notification
+Nen 0.2.12 `dist/Nen.exe` build, with UI-testing features excluded. Windows notification
 registration was restored to the packaged executable after the isolated checks.
 
 The read-only `check_updates` example reached the configured GitHub API and
@@ -167,7 +172,7 @@ fail; the original code was restored before the final suite.
 
 ## Measurements
 
-Nen 0.2.11 release executable: 34,911,744 bytes (33.29 MiB), including its local wallpaper.
+Nen 0.2.12 release executable: 34,916,352 bytes (33.30 MiB), including its local wallpaper.
 The performance samples below were collected with 0.2.0.
 
 | Measurement | Result |

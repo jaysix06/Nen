@@ -76,6 +76,14 @@ impl FloatingWindow {
         .detach();
     }
     pub fn new(state: Entity<AppState>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // Override the component plugin's opaque root canvas after Base Root
+        // has been created. The island's rounded layers own its background.
+        window.defer(cx, |window, cx| {
+            gpui_kit::base::Root::update(window, cx, |root, _, cx| {
+                root.style().background = Some(rgba(0x00000000).into());
+                cx.notify();
+            });
+        });
         let input = cx.new(|cx| InputState::new(window, cx));
         let mut view = Self {
             state: state.clone(),
@@ -302,11 +310,7 @@ impl FloatingWindow {
 }
 impl Render for FloatingWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = crate::theme::island_palette(
-            self.state.read(cx).wallpaper_color,
-            &self.state.read(cx).settings,
-            cx,
-        );
+        let p = crate::theme::surfaces(&self.state.read(cx).settings, cx);
         let mut settings = self.state.read(cx).settings.clone();
         if let Some((x, y)) = self.position_override {
             settings.floating_position = "Custom".into();
@@ -623,14 +627,26 @@ impl Render for FloatingWindow {
         }
         div()
             .id("floating-island")
+            .test_support()
+            .relative()
             .size_full()
             .rounded(px(crate::theme::island_radius(height)))
             .overflow_hidden()
-            .bg(p.paper)
             .text_color(p.text)
             .font_family("Segoe UI")
             .text_size(px(14.))
-            .child(content)
+            .child(super::wallpaper::wallpaper(
+                &settings,
+                self.state.read(cx).background.clone(),
+                crate::theme::island_radius(height),
+            ))
+            .child(
+                content
+                    .id("island-surface")
+                    .test_support()
+                    .rounded(px(crate::theme::island_radius(height)))
+                    .bg(p.paper),
+            )
     }
 }
 
@@ -673,6 +689,7 @@ pub fn show(state: Entity<AppState>, visible: bool, cx: &mut App) {
         show: false,
         titlebar: None,
         kind: WindowKind::PopUp,
+        window_background: WindowBackgroundAppearance::Transparent,
         window_bounds: Some(WindowBounds::Windowed(Bounds::new(
             point(px(anchor.0 as f32), px(anchor.1 as f32)),
             size(px(380.), px(56.)),

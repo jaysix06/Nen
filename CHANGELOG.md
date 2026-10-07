@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.11 - 2026-10-07
+
+### Fixed
+
+- The floating island now matches the main app's wallpaper, dimming, blur,
+  saturation, background opacity, surface style, theme and accent in every state.
+- Pill corners use transparent, antialiased rendering instead of a hard-edged
+  Windows region. The floating window's opacity control continues to work.
+
 ## 0.2.10 - 2026-10-07
 
 This release includes the editor and floating-window updates since 0.2.8.

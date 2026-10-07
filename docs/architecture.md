@@ -117,12 +117,16 @@ width and height change. GPUI springs preserve velocity when the user
 changes direction midway through a transition. Settled springs stop
 requesting frames.
 
-The floating shell uses the dominant color of the rendered wallpaper, sampled
-off the UI thread when the wallpaper changes. Its text switches between black
-and white for contrast. Compact corners form a 56-pixel-high pill; the native
-Windows region and GPUI radius agree during resize animations. Opening a
-floating note in the main window hides the floating window and clears its
-editing/reminder state.
+The main and floating shells share one wallpaper renderer, the same prepared
+blur/saturation image and the same surface palette. Fit, image opacity and Dim
+are applied when painting, so changes update both windows. Floating note editors
+inherit the shell's surface without painting a second tint over the image.
+Compact corners form a 56-pixel-high pill. Its transparent GPUI window and Base
+Root preserve antialiased edges; each wallpaper/tint layer has the same radius.
+The image is positioned within the viewport so its intrinsic aspect ratio cannot
+expand it beyond the lower corners. Windows regions are removed, and native
+floating opacity remains available. Opening a floating note in the main window
+hides the floating window and clears its editing/reminder state.
 
 List formatting preserves Markdown text and native undo history. Enter,
 Tab and Shift+Tab are intercepted as input actions before default textarea

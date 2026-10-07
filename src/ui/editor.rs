@@ -476,15 +476,7 @@ impl Render for NoteEditor {
                 .entry(item.marker.start)
                 .or_insert_with(|| cx.focus_handle());
         }
-        let p = if self.compact {
-            crate::theme::island_palette(
-                self.state.read(cx).wallpaper_color,
-                &self.state.read(cx).settings,
-                cx,
-            )
-        } else {
-            crate::theme::surfaces(&self.state.read(cx).settings, cx)
-        };
+        let p = crate::theme::surfaces(&self.state.read(cx).settings, cx);
         let app = self.state.read(cx);
         let Some(buffer) = app.notes.get(&self.id) else {
             return div().into_any_element();
@@ -682,7 +674,7 @@ impl Render for NoteEditor {
             .min_w_0()
             .min_h_0()
             .overflow_hidden()
-            .bg(p.paper)
+            .when(!self.compact, |view| view.bg(p.paper))
             .when(!self.compact, |view| view.child(tools))
             .child(
                 div()

@@ -40,7 +40,6 @@ pub struct AppState {
     pub desktop: Option<crate::platform::Desktop>,
     pub shortcut_capture: Option<String>,
     pub background: Option<std::path::PathBuf>,
-    pub wallpaper_color: Option<u32>,
     pub update: Option<crate::update::Update>,
     pub update_status: Option<&'static str>,
     update_task: Option<Task<()>>,
@@ -132,7 +131,6 @@ impl AppState {
             desktop: None,
             shortcut_capture: None,
             background: None,
-            wallpaper_color: None,
             update: None,
             update_status: None,
             update_task: None,
@@ -315,20 +313,13 @@ impl AppState {
                 .spawn(async move {
                     crate::diagnostics::data_directory()
                         .and_then(|directory| crate::background::prepare(&settings, &directory))
-                        .map(|path| {
-                            let color = path
-                                .as_deref()
-                                .and_then(|path| crate::background::dominant_color(path).ok());
-                            (path, color)
-                        })
                 })
                 .await;
             let _ = state.update(cx, |state, cx| {
                 match result {
-                    Ok((path, color)) => {
+                    Ok(path) => {
                         let previous = state.background.take();
                         state.background = path;
-                        state.wallpaper_color = color;
                         if let Some(previous) =
                             previous.filter(|previous| Some(previous) != state.background.as_ref())
                         {

@@ -1441,6 +1441,109 @@ fn keyboard_creation_typing_and_reopening_tabs(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn floating_appearance_tracks_main_surfaces_and_keeps_rounded_layers(cx: &mut TestAppContext) {
+    use gpui_kit::*;
+    use nen::ui::floating::FloatingWindow;
+    cx.dispatcher.allow_parking();
+    let path =
+        std::env::temp_dir().join(format!("nen-island-style-{}.sqlite", uuid::Uuid::new_v4()));
+    let (store, _, _, _) = Store::start(path.clone()).expect("database");
+    cx.update(gpui_kit::init);
+    let settings = Settings {
+        default_wallpaper: false,
+        reduced_motion: true,
+        floating_opacity: 1.,
+        ..Default::default()
+    };
+    let state = cx.new(|cx| AppState::new(store.clone(), settings, Session::default(), cx));
+    state.update(cx, |state, _| {
+        state.background =
+            Some(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/nen-lake.png"));
+    });
+    let (handle, _) = cx.update(|cx| {
+        gpui_kit::open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                    point(px(0.), px(0.)),
+                    size(px(380.), px(56.)),
+                ))),
+                window_background: WindowBackgroundAppearance::Transparent,
+                ..Default::default()
+            },
+            cx,
+            |window, cx| cx.new(|cx| FloatingWindow::new(state.clone(), window, cx)),
+        )
+        .expect("island")
+    });
+    for theme in ["Dark", "Light"] {
+        for surface in ["Opaque", "Frosted", "Clear"] {
+            for dim in [0.2, 0.8] {
+                state.update(cx, |state, cx| {
+                    state.settings.theme = theme.into();
+                    state.settings.surface = surface.into();
+                    state.settings.background_dim = dim;
+                    nen::theme::apply(&state.settings, cx);
+                    cx.notify();
+                });
+                cx.update_window(handle, |_, window, cx| {
+                    window.render_frame(cx);
+                    let bounds = window.find("floating-island").bounds();
+                    assert_eq!(window.find("wallpaper-layer").bounds(), bounds);
+                    assert_eq!(window.find("wallpaper-image").bounds(), bounds);
+                    assert_eq!(window.find("wallpaper-dim").bounds(), bounds);
+                    assert_eq!(window.find("island-surface").bounds(), bounds);
+                    let paper = nen::theme::surfaces(&state.read(cx).settings, cx).paper;
+                    let tint: Hsla = rgb(0).alpha(dim).into();
+                    let layers = window
+                        .painted_quads()
+                        .into_iter()
+                        .filter(|quad| {
+                            quad.bounds.size.width == bounds.size.width.scale(window.scale_factor())
+                                && quad.bounds.size.height
+                                    == bounds.size.height.scale(window.scale_factor())
+                        })
+                        .collect::<Vec<_>>();
+                    assert!(
+                        layers
+                            .iter()
+                            .any(|quad| quad.background.as_solid() == Some(paper)),
+                        "Main surface must be painted for {theme}/{surface}"
+                    );
+                    assert!(
+                        layers
+                            .iter()
+                            .any(|quad| quad.background.as_solid() == Some(tint)),
+                        "Dim must be painted for {theme}/{surface}/{dim}"
+                    );
+                    assert!(
+                        layers.iter().all(|quad| quad.corner_radii.top_left
+                            >= px(27.9).scale(window.scale_factor())),
+                        "No full-size square layer may fill the transparent corners: {layers:?}"
+                    );
+                })
+                .expect("matching live appearance");
+            }
+        }
+    }
+    state.update(cx, |state, cx| {
+        state.background = None;
+        cx.notify();
+    });
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("wallpaper-image").is_none());
+        assert!(window.try_find("wallpaper-layer").is_some());
+    })
+    .expect("solid background fallback");
+    store
+        .request(Request::Shutdown)
+        .recv_blocking()
+        .expect("shutdown")
+        .expect("saved");
+    std::fs::remove_file(path).expect("remove database");
+}
+
+#[gpui_kit::test]
 fn floating_note_and_inline_reminder_share_persistent_state(cx: &mut TestAppContext) {
     cx.dispatcher.allow_parking();
     use nen::storage::Response;

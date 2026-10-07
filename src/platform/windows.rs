@@ -378,6 +378,9 @@ pub fn floating_style(window: &Window, settings: &Settings, cx: &gpui_kit::App) 
                         0,
                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
                     );
+                    // The renderer's alpha supplies antialiased corners; do not
+                    // cut them into the integer pixels of a native window region.
+                    let _ = SetWindowRgn(hwnd, None, true);
                     if settings.floating_opacity < 0.999 {
                         let _ = SetWindowLongPtrW(
                             hwnd,
@@ -448,7 +451,6 @@ pub fn position_floating(
         let scale = window.scale_factor();
         let w = (width * scale).round() as i32;
         let h = (height * scale).round() as i32;
-        let diameter = (crate::theme::island_radius(height) * 2. * scale).round() as i32;
         let (l, t, r, b) = anchor;
         let margin = (24. * scale) as i32;
         let (x, y) = match settings.floating_position.as_str() {
@@ -475,10 +477,6 @@ pub fn position_floating(
                         h,
                         SWP_NOZORDER | SWP_NOACTIVATE,
                     );
-                    let region = CreateRoundRectRgn(0, 0, w + 1, h + 1, diameter, diameter);
-                    if !region.is_invalid() && SetWindowRgn(hwnd, Some(region), true) == 0 {
-                        let _ = DeleteObject(region.into());
-                    }
                 }
             })
             .detach();

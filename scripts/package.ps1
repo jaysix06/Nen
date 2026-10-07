@@ -18,6 +18,7 @@ try {
 if (Test-Path -LiteralPath $legacyExecutable) { Remove-Item -LiteralPath $legacyExecutable }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md') -Destination $destination
 Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination $destination
+Copy-Item -LiteralPath (Join-Path $projectRoot 'CHANGELOG.md') -Destination $destination
 $documentation = Join-Path $destination 'docs'
 New-Item -ItemType Directory -Path $documentation -Force | Out-Null
 foreach ($name in @('architecture.md','validation.md')) {

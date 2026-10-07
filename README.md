@@ -25,6 +25,8 @@ Write it. Keep it accessible. Get reminded. Move on.
   snooze, completion and native Windows notification actions.
 - One floating quick-access window that expands between search, results,
   editing and inline reminders, sharing the main app's notes.
+  It uses the same wallpaper, dimming, blur, saturation, background opacity,
+  surface style, theme and accent as the main app, with smooth rounded edges.
 
 The editor stores Markdown as text. Inserted images use local managed references;
 remote images are not loaded by the reading view. Links open in the default

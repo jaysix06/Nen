@@ -128,30 +128,3 @@ pub const LIST_WIDTH: f32 = 272.;
 pub fn island_radius(height: f32) -> f32 {
     (28. - (height - 56.) / 5.).clamp(18., 28.)
 }
-
-pub fn island_palette(color: Option<u32>, settings: &Settings, cx: &App) -> Palette {
-    let mut p = palette(cx);
-    let color = color.unwrap_or_else(|| {
-        u32::from_str_radix(settings.background_color.trim_start_matches('#'), 16)
-            .unwrap_or(0x121715)
-    });
-    p.paper = rgb(color).into();
-    let luminance = |value: u32| {
-        let channel = |shift: u32| {
-            let value = ((value >> shift) & 255u32) as f32 / 255.;
-            if value <= 0.04045 {
-                value / 12.92
-            } else {
-                ((value + 0.055) / 1.055).powf(2.4)
-            }
-        };
-        0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
-    };
-    let light = luminance(color) < 0.179;
-    p.text = rgb(if light { 0xffffff } else { 0x000000 }).into();
-    p.muted = p.text;
-    p.accent = p.text;
-    p.line = p.text.alpha(0.12);
-    p.selected = p.text.alpha(0.10);
-    p
-}

@@ -6,3 +6,4 @@ pub mod lists;
 mod note_content;
 pub mod reminders;
 pub mod settings;
+mod wallpaper;

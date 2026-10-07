@@ -792,38 +792,8 @@ impl Render for AppWindow {
                 .child(editor)
                 .into_any_element()
         };
-        let color = u32::from_str_radix(config.background_color.trim_start_matches('#'), 16)
-            .unwrap_or(0xf6f5f1);
-        let mut background = div()
-            .id("wallpaper-layer")
-            .test_support()
-            .absolute()
-            .top_0()
-            .left_0()
-            .size_full()
-            .bg(rgb(color));
-        if let Some(path) = self.state.read(cx).background.clone() {
-            background = background.child(
-                img(path)
-                    .size_full()
-                    .object_fit(match config.background_fit.as_str() {
-                        "Contain" => ObjectFit::Contain,
-                        "Center" => ObjectFit::None,
-                        _ => ObjectFit::Cover,
-                    })
-                    .opacity(config.background_opacity),
-            );
-        }
-        background = background.child(
-            div()
-                .id("wallpaper-dim")
-                .test_support()
-                .absolute()
-                .top_0()
-                .left_0()
-                .size_full()
-                .bg(rgb(0x000000).alpha(crate::theme::background_dim(&config))),
-        );
+        let background =
+            super::wallpaper::wallpaper(&config, self.state.read(cx).background.clone(), 0.);
         let mut root = div()
             .id("app")
             .key_context("Nen")

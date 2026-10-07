@@ -363,7 +363,20 @@ fn run() -> anyhow::Result<()> {
                                 window.render_frame(cx);
                                 window
                                     .render_to_image()
-                                    .and_then(|image| image.save(path).map_err(Into::into))
+                                    .and_then(|image| {
+                                        if std::env::args().any(|arg| arg == "--check-floating-appearance") {
+                                            let (width, height) = image.dimensions();
+                                            for (x, y) in [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)] {
+                                                assert_eq!(image.get_pixel(x, y)[3], 0, "Floating corner must remain transparent");
+                                            }
+                                            assert!(image.pixels().any(|pixel| pixel[3] > 0 && pixel[3] < 255), "Floating curves must have antialiased edge pixels");
+                                            assert!(window.try_find("wallpaper-layer").is_some());
+                                            assert!(window.try_find("wallpaper-image").is_some());
+                                            assert!(window.try_find("island-surface").is_some());
+                                            eprintln!("Native floating wallpaper and antialiased corners verified");
+                                        }
+                                        image.save(path).map_err(Into::into)
+                                    })
                             });
                             if let Ok(Err(error)) = result {
                                 eprintln!("Capture failed: {error}");

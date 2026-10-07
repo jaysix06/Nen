@@ -668,19 +668,19 @@ impl AppWindow {
                     .h(px(2.))
                     .bg(p.accent),
             )
+            .child(
+                Button::new("add-tab")
+                    .ghost()
+                    .small()
+                    .icon(IconName::Plus)
+                    .tooltip("New note · Ctrl+N")
+                    .on_click(move |_, _, cx| {
+                        state.update(cx, |state, cx| {
+                            state.create_note(false, cx);
+                        });
+                    }),
+            )
         })
-        .child(
-            Button::new("add-tab")
-                .ghost()
-                .small()
-                .icon(IconName::Plus)
-                .tooltip("New note · Ctrl+N")
-                .on_click(move |_, _, cx| {
-                    state.update(cx, |state, cx| {
-                        state.create_note(false, cx);
-                    });
-                }),
-        )
         .into_any_element()
     }
 }

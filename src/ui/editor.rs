@@ -732,7 +732,7 @@ impl Render for NoteEditor {
                 div()
                     .id("note-footer")
                     .test_support()
-                    .h(px(34.))
+                    .h(px(if self.compact { 34. } else { 38. }))
                     .flex_shrink_0()
                     .px_6()
                     .flex()

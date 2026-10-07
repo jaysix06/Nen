@@ -264,7 +264,11 @@ fn body_lists_zoom_and_long_reading_notes_preserve_fixed_chrome(cx: &mut TestApp
         assert_eq!(window.find("note-title").bounds().size.height, title_height);
         assert_eq!(
             window.find("note-footer").bounds().size.height,
-            gpui_kit::px(34.)
+            gpui_kit::px(38.)
+        );
+        assert_eq!(
+            window.find("note-footer").bounds().top(),
+            window.find("notes-footer").bounds().top()
         );
         assert!(
             window.find("reading-view").bounds().bottom()

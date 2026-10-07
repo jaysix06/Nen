@@ -15,7 +15,79 @@ struct Prefix<'a> {
     kind: ListKind,
 }
 
+#[derive(Clone, Debug)]
+pub struct ChecklistItem {
+    pub marker: Range<usize>,
+    pub checked: bool,
+    pub label: String,
+    pub indent: usize,
+}
+
+fn checkbox(line: &str) -> Option<ChecklistItem> {
+    let trimmed = line.trim_start_matches([' ', '\t']);
+    let indent = line.len() - trimmed.len();
+    let text = trimmed
+        .strip_prefix("- ")
+        .or_else(|| trimmed.strip_prefix("* "))
+        .or_else(|| trimmed.strip_prefix("+ "))
+        .unwrap_or(trimmed);
+    let marker_start = line.len() - text.len();
+    if !(text.starts_with("[ ]") || text.starts_with("[x]") || text.starts_with("[X]"))
+        || !text[3..].starts_with([' ', '\t']) && text.len() != 3
+    {
+        return None;
+    }
+    Some(ChecklistItem {
+        marker: indent..marker_start + 3,
+        checked: text.as_bytes()[1] != b' ',
+        label: text[3..].trim_start_matches([' ', '\t']).to_owned(),
+        indent,
+    })
+}
+
+/// Source ranges stay in bytes, including any legacy bullet before the box.
+pub fn checklist_items(text: &str) -> Vec<ChecklistItem> {
+    let mut items = Vec::new();
+    let mut offset = 0;
+    let mut fence = None;
+    for line in text.split_inclusive('\n') {
+        let line_text = line.trim_end_matches(['\r', '\n']);
+        let trimmed = line_text.trim_start();
+        let next = if trimmed.starts_with("```") {
+            Some('`')
+        } else if trimmed.starts_with("~~~") {
+            Some('~')
+        } else {
+            None
+        };
+        if let Some(next) = next {
+            if fence == Some(next) {
+                fence = None;
+            } else if fence.is_none() {
+                fence = Some(next);
+            }
+        } else if fence.is_none()
+            && let Some(mut item) = checkbox(line_text)
+        {
+            item.marker.start += offset;
+            item.marker.end += offset;
+            items.push(item);
+        }
+        offset += line.len();
+    }
+    items
+}
+
 fn prefix(line: &str) -> Option<Prefix<'_>> {
+    if let Some(item) = checkbox(line) {
+        return Some(Prefix {
+            indent: &line[..item.indent],
+            marker: &line[item.marker.clone()],
+            content: line[item.marker.end..].trim_start_matches([' ', '\t']),
+            number: None,
+            kind: ListKind::Checklist,
+        });
+    }
     let trimmed = line.trim_start_matches([' ', '\t']);
     let indent = &line[..line.len() - trimmed.len()];
     let split = trimmed.find([' ', '\t'])?;
@@ -88,6 +160,9 @@ pub fn typing(text: &str, selection: Range<usize>, key: &str) -> Option<(Range<u
     if key == "space" {
         let candidate = format!("{before} ");
         let parsed = prefix(&candidate)?;
+        if parsed.kind == ListKind::Checklist {
+            return None;
+        }
         if !parsed.content.is_empty() {
             return None;
         }
@@ -115,7 +190,7 @@ pub fn typing(text: &str, selection: Range<usize>, key: &str) -> Option<(Range<u
                 parsed.number?.checked_add(1)?,
                 parsed.marker.chars().last()?
             ),
-            ListKind::Checklist => "- [ ]".into(),
+            ListKind::Checklist => "[ ]".into(),
             ListKind::Bullet => "-".into(),
         };
         return Some((selection, format!("\n{}{marker} ", parsed.indent)));
@@ -165,7 +240,7 @@ pub fn toggle(text: &str, selection: Range<usize>, kind: ListKind) -> (Range<usi
             let marker = match kind {
                 ListKind::Bullet => "-".into(),
                 ListKind::Numbered => format!("{}.", index + 1),
-                ListKind::Checklist => "- [ ]".into(),
+                ListKind::Checklist => "[ ]".into(),
             };
             format!("{indent}{marker} {content}")
         })
@@ -182,7 +257,8 @@ mod tests {
         for (text, expected) in [
             ("1. first", "\n2. "),
             ("  - item", "\n  - "),
-            ("- [x] done", "\n- [ ] "),
+            ("- [x] done", "\n[ ] "),
+            ("[x] done", "\n[ ] "),
             ("12) item", "\n13) "),
             ("• item", "\n- "),
         ] {
@@ -208,5 +284,16 @@ mod tests {
             toggle(&numbered, 0..numbered.len(), ListKind::Numbered).1,
             "猫\n  two"
         );
+        assert_eq!(
+            toggle("one\ntwo", 0..7, ListKind::Checklist).1,
+            "[ ] one\n[ ] two"
+        );
+        assert_eq!(typing("[ ] ", 4..4, "enter"), Some((0..4, String::new())));
+        let text = "[ ] 猫\n- [x] old\n```\n[ ] code\n```";
+        let items = checklist_items(text);
+        assert_eq!(items.len(), 2);
+        assert_eq!(&text[items[0].marker.clone()], "[ ]");
+        assert_eq!(&text[items[1].marker.clone()], "- [x]");
+        assert!(items[1].checked);
     }
 }

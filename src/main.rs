@@ -108,7 +108,7 @@ fn run() -> anyhow::Result<()> {
             match gpui_kit::open_window(options, cx, |window, cx| {
                 cx.new(|cx| AppWindow::new(state.clone(), window, cx))
             }) {
-                Ok((handle, _)) => {
+                Ok((handle, _main_view)) => {
                     state.update(cx, |state, _| state.main_window = Some(handle));
                     if !(std::env::args().any(|arg| arg == "--startup")
                         && state.read(cx).settings.start_in_tray)
@@ -119,6 +119,7 @@ fn run() -> anyhow::Result<()> {
                     if let Some(path) = std::env::args().skip_while(|arg| arg != "--capture").nth(1)
                     {
                         let capture_state = state.clone();
+                        let capture_view = _main_view.clone();
                         cx.spawn(async move |cx| {
                             cx.background_executor()
                                 .timer(std::time::Duration::from_millis(100))
@@ -225,6 +226,69 @@ fn run() -> anyhow::Result<()> {
                                 cx.background_executor()
                                     .timer(std::time::Duration::from_millis(80))
                                     .await;
+                            }
+                            if std::env::args().any(|arg| arg == "--check-note-content") {
+                                let (marker, image_offset) = capture_state.read_with(cx, |state, _| {
+                                    let id = state.session.active.as_ref().expect("active note");
+                                    let text = &state.notes[id].note.content;
+                                    (nen::ui::lists::checklist_items(text)[0].marker.start, text.find("![").expect("fixture image"))
+                                });
+                                target.update(cx, |_, window, cx| {
+                                    use gpui_kit::test::TestWindowExt;
+                                    let box_id = SharedString::from(format!("read-check-{marker}"));
+                                    window.click(box_id, cx);
+                                }).expect("native checkbox click");
+                                cx.background_executor().timer(std::time::Duration::from_millis(150)).await;
+                                target.update(cx, |_, window, cx| {
+                                    use gpui_kit::test::TestWindowExt;
+                                    let box_id = SharedString::from(format!("read-check-{marker}"));
+                                    window.render_frame(cx);
+                                    assert_eq!(window.find(box_id.clone()).checked(), Some(true));
+                                    window.press("space", cx);
+                                }).expect("native checkbox keyboard activation");
+                                cx.background_executor().timer(std::time::Duration::from_millis(150)).await;
+                                target.update(cx, |_, window, cx| {
+                                    use gpui_kit::test::TestWindowExt;
+                                    let box_id = SharedString::from(format!("read-check-{marker}"));
+                                    window.render_frame(cx);
+                                    assert_eq!(window.find(box_id).checked(), Some(false));
+                                    let image_id = SharedString::from(format!("note-image-{image_offset}"));
+                                    let original = window.find(image_id.clone()).bounds().size;
+                                    let body = window.find("note-body").bounds();
+                                    for delta in [1., -1.] {
+                                        window.dispatch_event(ScrollWheelEvent { position: body.center(), delta: ScrollDelta::Lines(point(0., delta)), modifiers: Modifiers { control: true, ..Default::default() }, ..Default::default() }.to_platform_input(), cx);
+                                        window.render_frame(cx);
+                                        let image = window.find(image_id.clone()).bounds().size;
+                                        if delta > 0. { assert!(image.width > original.width && image.height > original.height); }
+                                        else { assert_eq!(image, original); }
+                                    }
+                                    assert_eq!(window.find("note-footer").bounds().top(), window.find("notes-footer").bounds().top());
+                                }).expect("native checklist and zoom check");
+                                eprintln!("Native checkbox click, keyboard toggle, image zoom and footer alignment verified");
+                            }
+                            if std::env::args().any(|arg| arg == "--check-image-paste") {
+                                let id = capture_state.read_with(cx, |state, _| state.session.active.clone().expect("active fixture note"));
+                                let before = capture_state.read_with(cx, |state, _| state.notes[&id].note.content.matches("nen-image://").count());
+                                target.update(cx, |_, window, cx| {
+                                    let editor = capture_view.read(cx).editors[&id].clone();
+                                    editor.update(cx, |view, cx| view.focus_body(window, cx));
+                                    use gpui_kit::test::TestWindowExt;
+                                    window.render_frame(cx);
+                                    window.press("ctrl-v", cx);
+                                }).expect("native image paste");
+                                for _ in 0..100 {
+                                    if capture_state.read_with(cx, |state, _| state.notes[&id].note.content.matches("nen-image://").count() > before) { break; }
+                                    cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
+                                }
+                                assert_eq!(capture_state.read_with(cx, |state, _| state.notes[&id].note.content.matches("nen-image://").count()), before + 1, "native clipboard image inserted");
+                                target.update(cx, |_, window, cx| {
+                                    use gpui_kit::test::TestWindowExt;
+                                    window.render_frame(cx);
+                                    if std::env::args().any(|arg| arg == "--capture-reading") { window.click("read-note", cx); }
+                                }).expect("return to reading view");
+                                capture_state.update(cx, |state, cx| { state.message = None; cx.notify(); });
+                                cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
+                                eprintln!("Native Windows image paste verified");
                             }
                             if std::env::args().any(|arg| arg == "--check-category-shortcuts") {
                                 let expected = [

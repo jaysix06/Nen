@@ -49,8 +49,8 @@ fn pasted_images_are_managed_locally_and_saved_with_the_note(cx: &mut TestAppCon
     .expect("focus body");
     let mut bytes = std::io::Cursor::new(Vec::new());
     image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
-        32,
-        16,
+        1600,
+        800,
         image::Rgba([10, 80, 160, 255]),
     ))
     .write_to(&mut bytes, image::ImageFormat::Png)
@@ -69,7 +69,7 @@ fn pasted_images_are_managed_locally_and_saved_with_the_note(cx: &mut TestAppCon
         .and_then(|value| value.strip_suffix(')'))
         .expect("image markdown");
     let image_path = nen::note_images::resolve(uri, &directory).expect("stored image");
-    assert_eq!(image::open(&image_path).expect("png").width(), 32);
+    assert_eq!(image::open(&image_path).expect("png").width(), 1600);
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         window.click("read-note", cx);
@@ -77,6 +77,46 @@ fn pasted_images_are_managed_locally_and_saved_with_the_note(cx: &mut TestAppCon
         assert!(window.find("reading-view").visible());
     })
     .expect("reading image");
+    cx.run_until_parked();
+    let original = cx
+        .update_window(handle, |_, window, cx| {
+            window.render_frame(cx);
+            window.find("note-image-0").bounds()
+        })
+        .expect("image layout");
+    cx.update_window(handle, |_, window, _| {
+        assert_eq!(
+            original.size.width,
+            window.find("note-body").bounds().size.width
+        )
+    })
+    .expect("large image fits at 100 percent");
+    cx.update_window(handle, |_, window, cx| {
+        window.click("zoom-in", cx);
+        window.render_frame(cx);
+        assert!(window.find("note-image-0").bounds().size.width > original.size.width);
+        assert!(window.find("note-image-0").bounds().size.height > original.size.height);
+        window.click("zoom-out", cx);
+        window.render_frame(cx);
+        assert_eq!(window.find("note-image-0").bounds().size, original.size);
+    })
+    .expect("image zoom preserves aspect ratio");
+    // Paste while Reading View has focus as well as while the textarea is active.
+    cx.simulate_keystrokes(handle, "ctrl-v");
+    cx.run_until_parked();
+    let content = state.read_with(cx, |state, _| state.notes[&id].note.content.clone());
+    assert_eq!(content.matches("![Image](nen-image://").count(), 2);
+    cx.update(|cx| {
+        cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(
+            "Plain text still pastes".into(),
+        ))
+    });
+    cx.update_window(handle, |_, window, cx| window.render_frame(cx))
+        .expect("paste focus");
+    cx.simulate_keystrokes(handle, "ctrl-v");
+    cx.run_until_parked();
+    let content = state.read_with(cx, |state, _| state.notes[&id].note.content.clone());
+    assert!(content.contains("Plain text still pastes"));
     state.update(cx, |state, cx| state.close_tab(&id, cx));
     store
         .request(Request::Shutdown)
@@ -93,6 +133,9 @@ fn pasted_images_are_managed_locally_and_saved_with_the_note(cx: &mut TestAppCon
         content
     );
     std::fs::remove_file(image_path).expect("remove image");
+    for file in std::fs::read_dir(directory.join("note-images")).expect("remaining images") {
+        std::fs::remove_file(file.expect("file").path()).expect("remove pasted image");
+    }
     std::fs::remove_dir(directory.join("note-images")).expect("remove images directory");
     std::fs::remove_file(path).expect("remove database");
     std::fs::remove_dir(directory).expect("remove fixture");
@@ -192,6 +235,66 @@ fn body_lists_zoom_and_long_reading_notes_preserve_fixed_chrome(cx: &mut TestApp
     cx.simulate_keystrokes(handle, "space");
     cx.run_until_parked();
     assert_eq!(body.read_with(cx, |body, _| body.value().to_string()), "- ");
+    let checklist = "[ ] First\n[x] Done\n\n```\n[ ] Code\n```\n\n- [ ] Legacy";
+    state.update(cx, |state, cx| {
+        state.edit(&id, "Lists and zoom".into(), checklist.into(), cx)
+    });
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find("edit-check-0").visible());
+        assert!(
+            window.try_find("edit-check-24").is_none(),
+            "code is not clickable"
+        );
+        window.click("edit-check-0", cx);
+    })
+    .expect("click checkbox while editing");
+    cx.run_until_parked();
+    assert!(state.read_with(cx, |state, _| {
+        state.notes[&id].note.content.starts_with("[x] First")
+    }));
+    cx.update_window(handle, |_, window, cx| {
+        body.update(cx, |input, cx| input.focus(window, cx))
+    })
+    .expect("focus undo");
+    cx.simulate_keystrokes(handle, "ctrl-z");
+    cx.run_until_parked();
+    assert_eq!(
+        body.read_with(cx, |body, _| body.value().to_string()),
+        checklist
+    );
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("read-note", cx);
+        window.render_frame(cx);
+        window.click("read-check-0", cx);
+    })
+    .expect("click checkbox while reading");
+    cx.run_until_parked();
+    assert!(state.read_with(cx, |state, _| {
+        state.notes[&id].note.content.starts_with("[x] First")
+    }));
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("read-check-0").focused(), Some(true));
+    })
+    .expect("checked frame");
+    cx.update_window(handle, |_, window, cx| window.press("space", cx))
+        .expect("keyboard toggle");
+    cx.run_until_parked();
+    assert!(
+        state.read_with(cx, |state, _| state.notes[&id]
+            .note
+            .content
+            .starts_with("[ ] First")),
+        "keyboard activation toggles the focused box"
+    );
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("read-note", cx);
+    })
+    .expect("return to writing");
     state.update(cx, |state, cx| {
         state.edit(
             &id,
@@ -1284,6 +1387,10 @@ fn keyboard_creation_typing_and_reopening_tabs(cx: &mut TestAppContext) {
     });
     cx.update_window(handle, |_, window, cx| window.render_frame(cx))
         .expect("initial frame");
+    cx.update_window(handle, |_, window, _| {
+        assert!(window.try_find("add-tab").is_none())
+    })
+    .expect("empty tab bar");
     cx.simulate_keystrokes(handle, "ctrl-n");
     cx.run_until_parked();
     let first = state

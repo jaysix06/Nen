@@ -33,10 +33,14 @@ reminders are handled when Nen opens or Windows resumes.
 - Bulleted, numbered and checklist formatting through the Lists menu. Enter
   continues a list or ends an empty item; Tab and Shift+Tab change indentation.
   Dot and bullet markers typed at the start of a line become Markdown bullets.
+- Checklists use `[ ]` markers without a bullet. Click a box in the editor or
+  Reading view to check or uncheck it; focused boxes also respond to Space/Enter.
 - Body-only zoom with Ctrl+mouse wheel and footer zoom controls, from 50% to
   300%. Ctrl+0 in the body resets zoom. Note titles keep their original size.
 - Paste clipboard images or use Insert image for PNG, JPEG, WebP and BMP files.
   Nen saves independent local copies and shows them in Reading view.
+  Ctrl+V also inserts images from Reading view, including Windows screenshot
+  bitmaps. Image dimensions follow body zoom while preserving their proportions.
 - Pinned notes and indexed local search, with title matches ranked first.
 - Note reminders with quick presets, daily/weekly/monthly/custom-day recurrence,
   snooze, completion and native Windows notification actions.

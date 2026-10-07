@@ -1,6 +1,6 @@
 [package]
 name = "nen"
-version = "0.2.9"
+version = "0.2.10"
 edition = "2024"
 description = "A quiet, local-first native notes app"
 license = "MIT"
@@ -32,7 +32,7 @@ global-hotkey = "0.8"
 tray-icon = { version = "0.26", default-features = false }
 winreg = "0.55"
 raw-window-handle = "0.6"
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_UI_Input_KeyboardAndMouse", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_Threading", "Win32_System_Com", "Win32_UI_Notifications", "Win32_Security", "Win32_System_WinRT", "UI_Notifications", "Data_Xml_Dom", "Foundation"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_UI_Input_KeyboardAndMouse", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_Threading", "Win32_System_Com", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_UI_Notifications", "Win32_Security", "Win32_System_WinRT", "UI_Notifications", "Data_Xml_Dom", "Foundation"] }
 
 [profile.dev]
 debug = 0

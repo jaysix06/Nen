@@ -162,9 +162,7 @@ impl AppWindow {
                         .as_ref()
                         .and_then(|id| self.editors.get(id))
                     {
-                        editor.update(cx, |editor, cx| {
-                            editor.body.update(cx, |body, cx| body.focus(window, cx))
-                        });
+                        editor.update(cx, |editor, cx| editor.focus_body(window, cx));
                     } else {
                         window.focus(&self.focus, cx);
                     }
@@ -283,9 +281,7 @@ impl AppWindow {
                     {
                         self.state.update(cx, |state, cx| state.open_note(&id, cx));
                         if let Some(editor) = self.editors.get(&id) {
-                            editor.update(cx, |editor, cx| {
-                                editor.body.update(cx, |input, cx| input.focus(window, cx))
-                            });
+                            editor.update(cx, |editor, cx| editor.focus_body(window, cx));
                         } else {
                             window.focus(&self.focus, cx);
                         }
@@ -708,9 +704,7 @@ impl Render for AppWindow {
             && let Some(editor) = editor.as_ref()
         {
             if !self.search.read(cx).focus_handle(cx).is_focused(window) {
-                editor.update(cx, |editor, cx| {
-                    editor.body.update(cx, |input, cx| input.focus(window, cx))
-                });
+                editor.update(cx, |editor, cx| editor.focus_body(window, cx));
             }
             self.last_active = active.clone();
         }

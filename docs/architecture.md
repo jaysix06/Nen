@@ -131,9 +131,20 @@ alone. Body zoom is local to an editor view, applies to writing and reading,
 and leaves titles and tab controls unchanged. Ctrl+wheel is intercepted in
 the body viewport before text scrolling consumes the event.
 
+Checklists store bare `[ ]`/`[x]` markers and continue to accept legacy bulleted
+markers. Editing controls cover marker bounds reported by the native textarea;
+the input still owns caret movement, scrolling and undo. Reading uses Markdown
+extensions with byte ranges back to the original note. Checkbox focus handles
+belong to the note editor so reparsing after a toggle preserves keyboard focus.
+
 Images are decoded off the UI thread with size and allocation limits, then
 stored as independent PNGs in the database's sibling `note-images` folder.
 Notes contain `nen-image://UUID.png` Markdown references. The reading renderer
 resolves only these managed files, checks directory containment, and continues
 to block web images and arbitrary file paths. Importing briefly disables body
 input and checks the target note still exists before inserting its reference.
+Image paste is intercepted for writing and reading, while plain text follows the
+normal input path. The Windows fallback reads bounded DIB/DIBV5 payloads and
+accounts for embedded bit masks before asynchronous decoding. The reading image
+renderer uses GPUI's asynchronous image cache, fits images at 100 percent, and
+scales both dimensions with body zoom. Larger zoomed images can scroll horizontally.

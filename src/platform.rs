@@ -1,5 +1,9 @@
 #[cfg(windows)]
+mod clipboard;
+#[cfg(windows)]
 mod notification_activation;
+#[cfg(windows)]
+pub use clipboard::clipboard_bitmap;
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]

@@ -19,8 +19,11 @@ pub struct NoteEditor {
     reading: bool,
     font_size: f32,
     zoom: f32,
-    image_busy: bool,
+    body_width: f32,
+    content_focus: FocusHandle,
+    pub(crate) image_busy: bool,
     image_task: Option<Task<()>>,
+    pub(crate) checkbox_focus: std::collections::HashMap<usize, FocusHandle>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -47,8 +50,11 @@ impl NoteEditor {
             reading: cfg!(feature = "ui-testing")
                 && std::env::args().any(|arg| arg == "--capture-reading"),
             zoom: 1.,
+            body_width: 0.,
+            content_focus: cx.focus_handle(),
             image_busy: false,
             image_task: None,
+            checkbox_focus: Default::default(),
             _subscriptions: Vec::new(),
         };
         view.sync(window, cx);
@@ -104,6 +110,13 @@ impl NoteEditor {
     pub fn focus_title(&self, window: &mut Window, cx: &mut App) {
         self.title.update(cx, |input, cx| input.focus(window, cx));
     }
+    pub fn focus_body(&self, window: &mut Window, cx: &mut App) {
+        if self.reading {
+            window.focus(&self.content_focus, cx);
+        } else {
+            self.body.update(cx, |input, cx| input.focus(window, cx));
+        }
+    }
     pub fn find(&self, window: &mut Window, cx: &mut App) {
         self.body.update(cx, |input, cx| {
             input.focus(window, cx);
@@ -156,7 +169,54 @@ impl NoteEditor {
         cx.notify();
     }
 
+    pub(crate) fn set_checked(
+        &mut self,
+        marker: std::ops::Range<usize>,
+        checked: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.image_busy || self.state.read(cx).is_quitting() {
+            return;
+        }
+        let input = self.body.read(cx);
+        let text = input.value();
+        let Some(item) = super::lists::checklist_items(&text)
+            .into_iter()
+            .find(|item| item.marker == marker)
+        else {
+            return;
+        };
+        if item.checked == checked {
+            return;
+        }
+        let cursor = input.cursor();
+        let scroll = input.scroll_offset();
+        let focus = window.focused(cx);
+        let mut replacement = text[marker.clone()].to_owned();
+        let state = replacement.len() - 2;
+        replacement.replace_range(state..state + 1, if checked { "x" } else { " " });
+        self.apply_text_edit((marker, replacement), window, cx);
+        self.body.update(cx, |input, cx| {
+            input.set_cursor_position(input.text().offset_to_position(cursor), window, cx);
+            input.set_scroll_offset(scroll, cx);
+        });
+        if let Some(focus) = focus {
+            window.defer(cx, move |window, cx| window.focus(&focus, cx));
+        }
+        cx.notify();
+    }
+
     fn body_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if event.keystroke.modifiers.control
+            && event.keystroke.key == "v"
+            && !event.keystroke.modifiers.alt
+            && !event.keystroke.modifiers.shift
+            && self.paste_image(window, cx)
+        {
+            cx.stop_propagation();
+            return;
+        }
         if !self.body.read(cx).focus_handle(cx).is_focused(window)
             || self.reading
             || self.state.read(cx).is_quitting()
@@ -279,6 +339,38 @@ impl NoteEditor {
         })
         .detach();
     }
+
+    fn paste_image(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let item = cx.read_from_clipboard();
+        let source = if let Some(item) = item.as_ref() {
+            crate::note_images::clipboard_source(item)
+        } else {
+            Ok(None)
+        };
+        #[cfg(windows)]
+        let source = if !cx.is_test()
+            && source.as_ref().is_ok_and(|source| !matches!(source, Some(crate::note_images::Source::File(_))))
+            && item.as_ref().is_none_or(|item| !item.entries().iter().any(|entry| matches!(entry, ClipboardEntry::Image(image) if image.format != ImageFormat::Bmp)))
+        {
+            match crate::platform::clipboard_bitmap() {
+                Ok(Some(bytes)) => Ok(Some(crate::note_images::Source::Bytes(bytes))),
+                Ok(None) => source,
+                Err(error) => Err(error),
+            }
+        } else { source };
+        match source {
+            Ok(Some(source)) => {
+                self.insert_image(source, window, cx);
+                true
+            }
+            Ok(None) => false,
+            Err(error) => {
+                self.state
+                    .update(cx, |state, cx| state.fail(error.to_string(), cx));
+                true
+            }
+        }
+    }
 }
 
 pub fn confirm_delete(state: Entity<AppState>, id: String, window: &mut Window, cx: &mut App) {
@@ -373,6 +465,17 @@ pub fn note_menu(mut menu: PopupMenu, state: Entity<AppState>, id: String, cx: &
 
 impl Render for NoteEditor {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let checklist_items = super::lists::checklist_items(&self.body.read(cx).value());
+        self.checkbox_focus.retain(|offset, _| {
+            checklist_items
+                .iter()
+                .any(|item| item.marker.start == *offset)
+        });
+        for item in checklist_items {
+            self.checkbox_focus
+                .entry(item.marker.start)
+                .or_insert_with(|| cx.focus_handle());
+        }
         let p = if self.compact {
             crate::theme::island_palette(
                 self.state.read(cx).wallpaper_color,
@@ -500,8 +603,13 @@ impl Render for NoteEditor {
                             } else {
                                 "Reading view"
                             })
-                            .on_click(cx.listener(|view, _, _, cx| {
+                            .on_click(cx.listener(|view, _, window, cx| {
                                 view.reading = !view.reading;
+                                if view.reading {
+                                    window.focus(&view.content_focus, cx);
+                                } else {
+                                    view.body.update(cx, |input, cx| input.focus(window, cx));
+                                }
                                 cx.notify();
                             })),
                     )
@@ -543,7 +651,15 @@ impl Render for NoteEditor {
                     ),
             );
         div()
+            .track_focus(&self.content_focus)
             .capture_key_down(cx.listener(Self::body_key))
+            .capture_action(cx.listener(
+                |view, _: &gpui_kit::component::input::Paste, window, cx| {
+                    if view.paste_image(window, cx) {
+                        cx.stop_propagation();
+                    }
+                },
+            ))
             .capture_action(cx.listener(
                 |view, action: &gpui_kit::component::input::Enter, window, cx| {
                     if !action.shift {
@@ -603,33 +719,51 @@ impl Render for NoteEditor {
                             .v_flex()
                             .overflow_hidden()
                             .child(
-                                canvas(|_, _, _| (), {
-                                    let editor = cx.entity();
-                                    move |bounds, _, window, _| {
-                                        let editor = editor.clone();
-                                        window.on_mouse_event(
-                                            move |event: &ScrollWheelEvent, phase, _, cx| {
-                                                if phase == DispatchPhase::Capture
-                                                    && event.modifiers.control
-                                                    && bounds.contains(&event.position)
-                                                {
-                                                    let delta = f32::from(
-                                                        event.delta.pixel_delta(px(16.)).y,
-                                                    );
-                                                    if delta != 0. {
-                                                        editor.update(cx, |view, cx| {
-                                                            view.change_zoom(
-                                                                if delta > 0. { 0.1 } else { -0.1 },
-                                                                cx,
-                                                            )
-                                                        });
-                                                    }
-                                                    cx.stop_propagation();
+                                canvas(
+                                    {
+                                        let editor = cx.entity();
+                                        move |bounds, _, cx| {
+                                            editor.update(cx, |view, cx| {
+                                                let width = f32::from(bounds.size.width);
+                                                if (view.body_width - width).abs() > 0.5 {
+                                                    view.body_width = width;
+                                                    cx.notify();
                                                 }
-                                            },
-                                        );
-                                    }
-                                })
+                                            })
+                                        }
+                                    },
+                                    {
+                                        let editor = cx.entity();
+                                        move |bounds, _, window, _| {
+                                            let editor = editor.clone();
+                                            window.on_mouse_event(
+                                                move |event: &ScrollWheelEvent, phase, _, cx| {
+                                                    if phase == DispatchPhase::Capture
+                                                        && event.modifiers.control
+                                                        && bounds.contains(&event.position)
+                                                    {
+                                                        let delta = f32::from(
+                                                            event.delta.pixel_delta(px(16.)).y,
+                                                        );
+                                                        if delta != 0. {
+                                                            editor.update(cx, |view, cx| {
+                                                                view.change_zoom(
+                                                                    if delta > 0. {
+                                                                        0.1
+                                                                    } else {
+                                                                        -0.1
+                                                                    },
+                                                                    cx,
+                                                                )
+                                                            });
+                                                        }
+                                                        cx.stop_propagation();
+                                                    }
+                                                },
+                                            );
+                                        }
+                                    },
+                                )
                                 .absolute()
                                 .size_full(),
                             )
@@ -640,37 +774,22 @@ impl Render for NoteEditor {
                                         .on_paste({
                                             let editor = cx.entity();
                                             move |item, window, cx| {
-                                                if item.entries().iter().any(|entry| matches!(entry, ClipboardEntry::Image(image) if image.bytes().len() as u64 > crate::note_images::MAX_BYTES)) {
-                                                    editor.update(cx, |view, cx| view.state.update(cx, |state, cx| state.fail("Choose an image smaller than 20 MB".into(), cx)));
-                                                    return true;
-                                                }
-                                                let source =
-                                                    item.entries().iter().find_map(|entry| {
-                                                        match entry {
-                                                            ClipboardEntry::Image(image) => Some(
-                                                                crate::note_images::Source::Bytes(
-                                                                    image.bytes().to_vec(),
-                                                                ),
-                                                            ),
-                                                            ClipboardEntry::ExternalPaths(
-                                                                paths,
-                                                            ) => paths
-                                                                .paths()
-                                                                .first()
-                                                                .cloned()
-                                                                .map(
-                                                                crate::note_images::Source::File,
-                                                            ),
-                                                            _ => None,
-                                                        }
-                                                    });
-                                                if let Some(source) = source {
-                                                    editor.update(cx, |view, cx| {
-                                                        view.insert_image(source, window, cx)
-                                                    });
-                                                    true
-                                                } else {
-                                                    false
+                                                match crate::note_images::clipboard_source(item) {
+                                                    Ok(Some(source)) => {
+                                                        editor.update(cx, |view, cx| {
+                                                            view.insert_image(source, window, cx)
+                                                        });
+                                                        true
+                                                    }
+                                                    Ok(None) => false,
+                                                    Err(error) => {
+                                                        editor.update(cx, |view, cx| {
+                                                            view.state.update(cx, |state, cx| {
+                                                                state.fail(error.to_string(), cx)
+                                                            })
+                                                        });
+                                                        true
+                                                    }
                                                 }
                                             }
                                         })
@@ -684,6 +803,9 @@ impl Render for NoteEditor {
                                         .line_height(relative(1.55))
                                         .aria_label("Note content"),
                                 )
+                                .child(
+                                    super::note_content::editing_checkboxes(cx.entity(), p.paper),
+                                )
                             })
                             .when(self.reading, |view| {
                                 view.child(
@@ -692,37 +814,18 @@ impl Render for NoteEditor {
                                         .test_support()
                                         .flex_1()
                                         .min_h_0()
-                                        .overflow_y_scroll()
+                                        .overflow_scroll()
                                         .text_size(px(size))
                                         .line_height(relative(1.55))
                                         .child(
-                                            gpui_kit::base::text::TextView::markdown(
-                                                "note-reading-text",
-                                                content,
-                                            )
-                                            .image_source(move |uri| {
-                                                crate::note_images::resolve(
-                                                    uri.as_ref(),
-                                                    &image_directory,
-                                                )
-                                                .map(ImageSource::from)
-                                                .unwrap_or_else(|| {
-                                                    ImageSource::from("icons/image-off.svg")
-                                                })
-                                            })
-                                            .on_link_click(|url, _, _, cx| {
-                                                if url.starts_with("https://")
-                                                    || url.starts_with("http://")
-                                                    || url.starts_with("mailto:")
-                                                {
-                                                    cx.open_url(url);
-                                                }
-                                            })
-                                            .style(
-                                                gpui_kit::base::text::TextViewStyle::from_theme(
-                                                    &gpui_kit::base::Theme::global(cx),
-                                                ),
-                                            ),
+                                            super::note_content::NoteDocument {
+                                                editor: cx.entity(),
+                                                directory: image_directory,
+                                                zoom: self.zoom,
+                                                available_width: self.body_width.max(1.),
+                                            }
+                                            .markdown("note-reading-text", content, cx)
+                                            .min_w(px(self.body_width * self.zoom.max(1.))),
                                         ),
                                 )
                             }),

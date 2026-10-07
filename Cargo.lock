@@ -4164,7 +4164,7 @@ dependencies = [
 
 [[package]]
 name = "nen"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "anyhow",
  "async-channel",

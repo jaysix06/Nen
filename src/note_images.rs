@@ -12,6 +12,37 @@ pub enum Source {
     Bytes(Vec<u8>),
 }
 
+pub fn clipboard_source(item: &gpui_kit::ClipboardItem) -> Result<Option<Source>> {
+    use gpui_kit::ClipboardEntry;
+    for entry in item.entries() {
+        if let ClipboardEntry::Image(image) = entry {
+            ensure!(
+                image.bytes().len() as u64 <= MAX_BYTES,
+                "Choose an image smaller than 20 MB"
+            );
+            return Ok(Some(Source::Bytes(image.bytes().to_vec())));
+        }
+    }
+    Ok(item.entries().iter().find_map(|entry| match entry {
+        ClipboardEntry::ExternalPaths(paths) => paths
+            .paths()
+            .iter()
+            .find(|path| {
+                path.extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| {
+                        matches!(
+                            ext.to_ascii_lowercase().as_str(),
+                            "png" | "jpg" | "jpeg" | "webp" | "bmp"
+                        )
+                    })
+            })
+            .cloned()
+            .map(Source::File),
+        _ => None,
+    }))
+}
+
 pub fn import(source: Source, directory: &Path) -> Result<String> {
     match source {
         Source::File(path) => import_path(&path, directory),
